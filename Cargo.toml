@@ -1,0 +1,6 @@
+[workspace]
+members = [
+    "config",
+    "config-ast",
+]
+resolver = "3"
