@@ -25,7 +25,9 @@ enum ImplAstEntry {
 
 impl AstTree {
     pub fn new() -> Self {
-        Self { entries: Vec::new() }
+        Self {
+            entries: Vec::new(),
+        }
     }
 }
 
@@ -35,14 +37,51 @@ impl Default for AstTree {
     }
 }
 
-impl AstTree {
-    pub fn parse_from_reader(reader: impl std::io::Read) {}
-}
-
 impl FromIterator<AstEntry> for AstTree {
     fn from_iter<T: IntoIterator<Item = AstEntry>>(entries: T) -> Self {
         Self {
             entries: entries.into_iter().collect(),
         }
+    }
+}
+
+impl AstEntry {
+    fn new_key_value(
+        key: impl Into<Bytes>,
+        operator: impl Into<Bytes>,
+        value: impl Into<Bytes>,
+    ) -> Self {
+        Self(ImplAstEntry::KeyOpValue {
+            key: key.into(),
+            operator: operator.into(),
+            value: value.into(),
+        })
+    }
+
+    pub fn new_group(key: impl Into<Bytes>, values: Vec<AstEntry>) -> Self {
+        Self(ImplAstEntry::Group {
+            name: key.into(),
+            entries: values,
+        })
+    }
+
+    pub fn new_assign(key: impl Into<Bytes>, value: impl Into<Bytes>) -> Self {
+        Self::new_key_value(key, Bytes::from_static(b"="), value)
+    }
+
+    pub fn new_assign_if_undefined(key: impl Into<Bytes>, value: impl Into<Bytes>) -> Self {
+        Self::new_key_value(key, Bytes::from_static(b":="), value)
+    }
+
+    pub fn new_add(key: impl Into<Bytes>, value: impl Into<Bytes>) -> Self {
+        Self::new_key_value(key, Bytes::from_static(b"+="), value)
+    }
+
+    pub fn new_remove(key: impl Into<Bytes>, value: impl Into<Bytes>) -> Self {
+        Self::new_key_value(key, Bytes::from_static(b"-="), value)
+    }
+
+    pub fn new_reset(key: impl Into<Bytes>) -> Self {
+        Self::new_key_value(key, Bytes::from_static(b"!"), Bytes::new())
     }
 }

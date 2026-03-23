@@ -1,21 +1,20 @@
-use std::{
-    fmt::{Display, from_fn},
-    sync::LazyLock,
-};
+use std::{ffi::OsStr, fmt::from_fn, os::unix::ffi::OsStrExt, sync::LazyLock};
 
 use bytes::Bytes;
-use regex::bytes::{Match, Regex};
+use regex::bytes::Regex;
 use thiserror::Error;
 
-use crate::{AstEntry, AstTree, ImplAstEntry};
+use crate::{AstEntry, AstTree};
 
 const CAPTURE_GB_GROUP: &str = "grp";
 const CAPTURE_GB_BODY_OPEN: &str = "gbo";
 const CAPTURE_GB_BODY_CLOSE: &str = "gbc";
 
 const CAPTURE_KVP_KEY: &str = "key";
-const CAPTURE_KVP_OPERATOR: &str = "op";
-const CAPTURE_KVP_VALUE: &str = "val";
+const CAPTURE_KVP_ASSIGN_OPERATOR: &str = "aop";
+const CAPTURE_KVP_RESET_OPERATOR: &str = "rop";
+const CAPTURE_KVP_VALUE_QUOTED: &str = "qval";
+const CAPTURE_KVP_VALUE_UNQUOTED: &str = "uval";
 
 const CAPTURE_WHITESPACE: &str = "wsp";
 
@@ -29,55 +28,28 @@ pub struct AstParse {
     buffer: Bytes,
 }
 
-enum PrivateAstEntry {
-    GroupOpen {
-        name: Bytes,
-        body_open: Bytes,
-    },
-    GroupClose {
-        group_close: Bytes,
-    },
-    KeyOpValue {
-        key: Bytes,
-        operator: Bytes,
-        value: Bytes,
-    },
-    Eof,
-}
-
 #[derive(Debug, Error)]
 pub enum AstParseError {
-    #[error("")]
-    EarlyEndOfStream,
-    #[error("")]
-    BadGroup {
+    #[error("group {} on line {line} is missing closing brace\n{}", OsStr::from_bytes(identifier).display(), OsStr::from_bytes(context).display())]
+    IncompleteGroup {
+        line: usize,
         context: Bytes,
         identifier: Bytes,
-        body_open: Bytes,
-        body_close: Bytes,
     },
-    #[error("")]
-    BadKeyOpValue {
-        context: Bytes,
-        identifier: Bytes,
-        operator: Bytes,
-        value: Bytes,
-    },
-    #[error("")]
-    UnmatchedGroupClose { group_close: Bytes },
-    #[error("")]
-    UnknownSequence(Bytes),
+    #[error("unmatched closing brace on line {line}\n{}", OsStr::from_bytes(group_close).display())]
+    UnmatchedGroupClose { line: usize, group_close: Bytes },
+    #[error("unknown sequence on line {line}\n{}", OsStr::from_bytes(sequence).display())]
+    UnknownSequence { line: usize, sequence: Bytes },
 }
 
 impl AstParser {
     pub fn new() -> Self {
         static PARSE_PATERN: LazyLock<Regex> = LazyLock::new(|| {
             const IDENTIFIER: &str = r"(?:[A-Za-z0-9_]+)";
-            const KVP_OPERATORS: &str = r"(?:=|\+=|-=|!=)";
-            const TYPE_STRING: &str = r#"(?:"(?:[^"\\]|\\.)*")"#;
-            const TYPE_BOOL: &str = r"(?:true|false)";
-            const TYPE_INTEGER: &str = r"(?:[0-9]+)";
-            const TYPE_FLOAT: &str = r"(?:[0-9]+\.[0-9]+)";
+            const KVP_ASSIGN_OPERATORS: &str = r"(?:=|:=|\+=|-=)";
+            const KVP_RESET_OPERATOR: &str = r"(?:!)";
+            const TYPE_QUOTED_STRING: &str = r#"(?:[^"\\]|\\.)*"#;
+            const TYPE_UNQUOTED_STRING: &str = r"(?:[A-Za-z0-9_./\-]+)";
             const WHITESPACE: &str = r"(?:\s|\r\n|\n)";
             let catpure_group_open = from_fn(|f| {
                 write!(f, r"(?<{CAPTURE_GB_GROUP}>{IDENTIFIER})")?;
@@ -86,26 +58,43 @@ impl AstParser {
                 write!(f, r"{WHITESPACE}*")?;
                 write!(f, r"(?<{CAPTURE_GB_BODY_OPEN}>\{{)")
             });
-            let catpure_group_close = from_fn(|f| write!(f, r"(?<CAPTURE_GB_BODY_CLOSE>\}})"));
+            let catpure_group_close = from_fn(|f| write!(f, r"(?<{CAPTURE_GB_BODY_CLOSE}>\}})"));
             let capture_key_value_pair = from_fn(|f| {
                 write!(f, r"(?<{CAPTURE_KVP_KEY}>{IDENTIFIER})")?;
                 write!(f, r"{WHITESPACE}*")?;
-                write!(f, r"(?<{CAPTURE_KVP_OPERATOR}>{KVP_OPERATORS})")?;
-                write!(f, r"{WHITESPACE}*")?;
+                write!(f, r"(?:")?;
                 write!(
                     f,
-                    r"(?<{CAPTURE_KVP_VALUE}>{TYPE_STRING}|{TYPE_BOOL}|{TYPE_INTEGER}|{TYPE_FLOAT})"
-                )
+                    r"(?<{CAPTURE_KVP_ASSIGN_OPERATOR}>{KVP_ASSIGN_OPERATORS})"
+                )?;
+                write!(f, r"{WHITESPACE}*")?;
+                write!(f, r"(?:")?;
+                write!(
+                    f,
+                    r#""(?<{CAPTURE_KVP_VALUE_QUOTED}>{TYPE_QUOTED_STRING})""#
+                )?;
+                write!(f, r"|")?;
+                write!(
+                    f,
+                    r"(?<{CAPTURE_KVP_VALUE_UNQUOTED}>{TYPE_UNQUOTED_STRING})"
+                )?;
+                write!(f, r")")?;
+                write!(f, r"|")?;
+                write!(f, r"(?<{CAPTURE_KVP_RESET_OPERATOR}>{KVP_RESET_OPERATOR})")?;
+                write!(f, r")")
             });
             let capture_whitespace =
-                from_fn(|f| write!(f, "(?<{CAPTURE_WHITESPACE}>{WHITESPACE}*)"));
+                from_fn(|f| write!(f, "(?<{CAPTURE_WHITESPACE}>{WHITESPACE}+)"));
             let parse_pattern = from_fn(|f| {
                 write!(f, r"{WHITESPACE}*")?;
-                write!(
-                    f,
-                    r"{capture_key_value_pair}|{catpure_group_open}|{catpure_group_close}|{capture_whitespace}"
-                )?;
-                write!(f, r"{WHITESPACE}*")
+                write!(f, r"(?:")?;
+                write!(f, r"{capture_key_value_pair}")?;
+                write!(f, r"|{catpure_group_open}")?;
+                write!(f, r"|{catpure_group_close}")?;
+                write!(f, r"|{capture_whitespace}")?;
+                write!(f, r")")?;
+                // A semi-colon can be used as an optional terminator.
+                write!(f, r"(?:{WHITESPACE}*;)?")
             });
             Regex::new(&format!(r"(?s-u:{parse_pattern})")).unwrap()
         });
@@ -114,6 +103,12 @@ impl AstParser {
             regex: PARSE_PATERN.clone(),
         }
     }
+}
+
+fn count_lines(bytes: &[u8]) -> usize {
+    // Using a regex here is just to make sure unicode is handled correctly.
+    static LINE_END: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?s-u:\n)").unwrap());
+    LINE_END.find_iter(bytes).count()
 }
 
 impl AstParser {
@@ -142,196 +137,277 @@ impl AstParser {
 
 impl AstParse {
     pub fn to_tree(self) -> Result<AstTree, AstParseError> {
-        self.collect()
-    }
-
-    fn parse_next_entry(&mut self) -> Result<PrivateAstEntry, AstParseError> {
-        if self.buffer.is_empty() {
-            return Err(AstParseError::EarlyEndOfStream);
-        }
-        let search_buffer = self.buffer.clone();
-        let captures = self
-            .parser
-            .regex
-            .captures_at(&search_buffer, 0)
-            .ok_or_else(|| AstParseError::UnknownSequence(search_buffer.clone()))?;
-        let full_match = captures.get_match();
-        debug_assert_eq!(
-            full_match.start(),
-            0,
-            "AST entry match must start from beginning of buffer"
-        );
-
-        fn capture(buffer: &Bytes, regex_match: Option<Match<'_>>) -> Bytes {
-            regex_match
-                .map(|regex_match| buffer.slice_ref(regex_match.as_bytes()))
-                .unwrap_or_default()
+        struct AstGroup {
+            span_start: usize,
+            name: Bytes,
+            entries: Vec<AstEntry>,
         }
 
-        match (
-            captures.name(CAPTURE_KVP_KEY),
-            captures.name(CAPTURE_KVP_OPERATOR),
-            captures.name(CAPTURE_KVP_VALUE),
-        ) {
-            (None, None, None) => (),
-            (Some(key), Some(op), Some(value)) => {
-                let buffer = self.buffer.split_to(full_match.end());
-                return Ok(PrivateAstEntry::KeyOpValue {
-                    key: buffer.slice_ref(key.as_bytes()),
-                    operator: buffer.slice_ref(op.as_bytes()),
-                    value: buffer.slice_ref(value.as_bytes()),
+        let mut stack = Vec::new();
+        stack.push(AstGroup {
+            span_start: 0,
+            name: Bytes::new(),
+            entries: Vec::new(),
+        });
+        let mut next_start = 0;
+        for captured in self.parser.regex.captures_iter(&self.buffer) {
+            let matched = captured.get_match();
+            if matched.start() > next_start {
+                return Err(AstParseError::UnknownSequence {
+                    line: count_lines(&self.buffer[..matched.start()]),
+                    sequence: self.buffer.slice(next_start..matched.start()),
                 });
             }
-            (key, op, value) => {
-                return Err(AstParseError::BadKeyOpValue {
-                    context: self.buffer.slice_ref(full_match.as_bytes()),
-                    identifier: capture(&self.buffer, key),
-                    operator: capture(&self.buffer, op),
-                    value: capture(&self.buffer, value),
-                });
-            }
-        }
+            debug_assert_eq!(
+                matched.start(),
+                next_start,
+                "match start cannot fall behind the start of the last match"
+            );
+            next_start = matched.end();
 
-        match (
-            captures.name(CAPTURE_GB_GROUP),
-            captures.name(CAPTURE_GB_BODY_OPEN),
-        ) {
-            (None, None) => (),
-            (Some(group), Some(body_open)) => {
-                let buffer = self.buffer.split_to(full_match.end());
-                return Ok(PrivateAstEntry::GroupOpen {
-                    name: buffer.slice_ref(group.as_bytes()),
-                    body_open: buffer.slice_ref(body_open.as_bytes()),
-                });
-            }
-            (group, body_open) => {
-                return Err(AstParseError::BadGroup {
-                    context: self.buffer.slice_ref(full_match.as_bytes()),
-                    identifier: capture(&self.buffer, group),
-                    body_open: capture(&self.buffer, body_open),
-                    body_close: Bytes::new(),
-                });
-            }
-        }
-
-        if let Some(body_close) = captures.name(CAPTURE_GB_BODY_CLOSE) {
-            let buffer = self.buffer.split_to(full_match.end());
-            return Ok(PrivateAstEntry::GroupClose {
-                group_close: buffer.slice_ref(body_close.as_bytes()),
-            });
-        }
-
-        panic!("parser is made up of capture groups")
-    }
-
-    fn parse_group_body(&mut self) -> Result<Vec<AstEntry>, AstParseError> {
-        let mut body = Vec::new();
-        loop {
-            match self.parse_next_entry()? {
-                PrivateAstEntry::GroupOpen { name, body_open: _ } => {
-                    body.push(AstEntry(ImplAstEntry::Group {
-                        name,
-                        entries: self.parse_group_body()?,
-                    }));
-                }
-                PrivateAstEntry::GroupClose { group_close: _ } => {
-                    break;
-                }
-                PrivateAstEntry::KeyOpValue {
-                    key,
-                    operator,
-                    value,
-                } => {
-                    body.push(AstEntry(ImplAstEntry::KeyOpValue {
-                        key,
-                        operator,
+            if let Some(key) = captured.name(CAPTURE_KVP_KEY) {
+                let (op, value) = if let Some(op) = captured.name(CAPTURE_KVP_ASSIGN_OPERATOR) {
+                    let value = if let Some(value) = captured.name(CAPTURE_KVP_VALUE_QUOTED) {
+                        self.buffer.slice_ref(value.as_bytes())
+                    } else if let Some(value) = captured.name(CAPTURE_KVP_VALUE_UNQUOTED) {
+                        self.buffer.slice_ref(value.as_bytes())
+                    } else {
+                        Bytes::new()
+                    };
+                    (op, value)
+                } else {
+                    let op = captured
+                        .name(CAPTURE_KVP_RESET_OPERATOR)
+                        .expect("an operation must be present if key-op-value key is found");
+                    (op, Bytes::new())
+                };
+                stack
+                    .last_mut()
+                    .expect("stack initialized with one element")
+                    .entries
+                    .push(AstEntry::new_key_value(
+                        self.buffer.slice_ref(key.as_bytes()),
+                        self.buffer.slice_ref(op.as_bytes()),
                         value,
-                    }));
+                    ));
+                continue;
+            }
+
+            if let Some(key) = captured.name(CAPTURE_GB_GROUP) {
+                let _ = captured
+                    .name(CAPTURE_GB_BODY_OPEN)
+                    .expect("body-open must be present if group key is found");
+                stack.push(AstGroup {
+                    span_start: key.start(),
+                    name: self.buffer.slice_ref(key.as_bytes()),
+                    entries: Vec::new(),
+                });
+                continue;
+            }
+
+            if let Some(body_close) = captured.name(CAPTURE_GB_BODY_CLOSE) {
+                let closed_group = stack.pop().expect("stack initialized with one element");
+                match stack.last_mut() {
+                    Some(append_to_group) => {
+                        append_to_group
+                            .entries
+                            .push(AstEntry::new_group(closed_group.name, closed_group.entries));
+                        continue;
+                    }
+                    None => {
+                        return Err(AstParseError::UnmatchedGroupClose {
+                            line: count_lines(&self.buffer[..body_close.end()]),
+                            group_close: self.buffer.slice_ref(body_close.as_bytes()),
+                        });
+                    }
                 }
-                PrivateAstEntry::Eof => return Err(AstParseError::EarlyEndOfStream),
             }
+
+            if captured.name(CAPTURE_WHITESPACE).is_some() {
+                continue;
+            }
+
+            panic!(
+                "at least one capture group must be met but match '{}' met none",
+                OsStr::from_bytes(matched.as_bytes()).display()
+            );
         }
-        Ok(body)
-    }
-}
 
-impl Iterator for AstParse {
-    type Item = Result<AstEntry, AstParseError>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let context = self.buffer.clone();
-        match self.parse_next_entry() {
-            Ok(PrivateAstEntry::GroupOpen { name, body_open }) => match self.parse_group_body() {
-                Ok(entries) => Some(Ok(AstEntry(ImplAstEntry::Group { name, entries }))),
-                Err(AstParseError::EarlyEndOfStream) => Some(Err(AstParseError::BadGroup {
-                    context,
-                    identifier: name,
-                    body_open,
-                    body_close: Bytes::new(),
-                })),
-                Err(error) => Some(Err(error)),
-            },
-            Ok(PrivateAstEntry::GroupClose { group_close }) => {
-                Some(Err(AstParseError::UnmatchedGroupClose { group_close }))
-            }
-            Ok(PrivateAstEntry::KeyOpValue {
-                key,
-                operator,
-                value,
-            }) => Some(Ok(AstEntry(ImplAstEntry::KeyOpValue {
-                key,
-                operator,
-                value,
-            }))),
-            Ok(PrivateAstEntry::Eof) => None,
-            Err(error) => Some(Err(error)),
+        if stack.len() > 1 {
+            let incomplete_group = stack.pop().expect("stack len is greater than 1");
+            Err(AstParseError::IncompleteGroup {
+                line: count_lines(&self.buffer[..incomplete_group.span_start]),
+                context: self.buffer.slice(incomplete_group.span_start..),
+                identifier: incomplete_group.name,
+            })
+        } else {
+            let tree = stack.pop().expect("stack initialized with one element");
+            Ok(AstTree {
+                entries: tree.entries,
+            })
         }
     }
 }
-
-// struct JoinSlice<'a, T, S> {
-//     slice: &'a [T],
-//     separator: S,
-// }
-
-// impl<'a, T, S> JoinSlice<'a, T, S> {
-//     pub fn new(slice: &'a [T], separator: S) -> Self {
-//         Self { slice, separator }
-//     }
-// }
-
-// impl<'a, T, S> Display for JoinSlice<'a, T, S>
-// where
-//     T: Display,
-//     S: Display,
-// {
-//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-//         if let Some((first, tail)) = self.slice.split_first() {
-//             write!(f, "{first}")?;
-//             for value in tail {
-//                 write!(f, "{}{value}", self.separator)?;
-//             }
-//         }
-//         Ok(())
-//     }
-// }
 
 #[cfg(test)]
 mod test {
     use rstest::rstest;
 
-    use crate::{AstTree, parser::AstParser};
+    use crate::{AstEntry, AstTree, parser::AstParser};
 
     #[rstest]
-    #[case("", AstTree { entries: vec![] })]
-    #[case("\n", AstTree { entries: vec![] })]
-    #[case("\r\n", AstTree { entries: vec![] })]
-    #[case("\t", AstTree { entries: vec![] })]
-    #[case(" ", AstTree { entries: vec![] })]
-    #[case("\n\r\n\t ", AstTree { entries: vec![] })]
-    fn parse_str_ok(#[case] input: &str, #[case] output: AstTree) {
-        let input_bytes = input.as_bytes().to_vec();
-        let ast = AstParser::new().parse_bytes(input_bytes).to_tree();
+    #[case(b"")]
+    #[case(b" ")]
+    #[case(b"\t")]
+    #[case(b"\n")]
+    #[case(b"\r\n")]
+    #[case(b" \t\n\r\n")]
+    fn parse_empty_ast(#[case] input: &[u8]) {
+        let ast = AstParser::new().parse_bytes(input.to_vec()).to_tree();
+        assert!(ast.is_ok(), "error converting input to tree: {ast:?}");
+        assert_eq!(ast.unwrap(), AstTree::new());
+    }
+
+    #[rstest]
+    #[case(
+        b"KEY=UNQUOTED_STRING",
+        AstTree {
+            entries: vec![
+                AstEntry::new_assign(b"KEY".to_vec(), b"UNQUOTED_STRING".to_vec())
+            ]
+        }
+    )]
+    #[case(
+        b"KEY_WITH_UNDERSCORES=UNQUOTED_STRING/0123456789.",
+        AstTree {
+            entries: vec![
+                AstEntry::new_assign(b"KEY_WITH_UNDERSCORES".to_vec(), b"UNQUOTED_STRING/0123456789.".to_vec())
+            ]
+        }
+    )]
+    #[case(
+        b"KEY=\"QUOTED String 0123456789 \\\\ \\\"\"",
+        AstTree {
+            entries: vec![
+                AstEntry::new_assign(b"KEY".to_vec(), b"QUOTED String 0123456789 \\\\ \\\"".to_vec())
+            ]
+        }
+    )]
+    #[case(
+        b"KEY=UNQUOTED_STRING;",
+        AstTree {
+            entries: vec![
+                AstEntry::new_assign(b"KEY".to_vec(), b"UNQUOTED_STRING".to_vec())
+            ]
+        }
+    )]
+    #[case(
+        b"KEY = UNQUOTED_STRING ;",
+        AstTree {
+            entries: vec![
+                AstEntry::new_assign(b"KEY".to_vec(), b"UNQUOTED_STRING".to_vec())
+            ]
+        }
+    )]
+    #[case(
+        b"KEY\n=\n\t    UNQUOTED_STRING;",
+        AstTree {
+            entries: vec![
+                AstEntry::new_assign(b"KEY".to_vec(), b"UNQUOTED_STRING".to_vec())
+            ]
+        }
+    )]
+    #[case(
+        b"KEY=UNQUOTED_STRING;KEY2=\"QUOTED String @\";",
+        AstTree {
+            entries: vec![
+                AstEntry::new_assign(b"KEY".to_vec(), b"UNQUOTED_STRING".to_vec()),
+                AstEntry::new_assign(b"KEY2".to_vec(), b"QUOTED String @".to_vec()),
+            ]
+        }
+    )]
+    #[case(
+        b"
+        KEY+=UNQUOTED_STRING
+        KEY=\"QUOTED String @\";
+        ",
+        AstTree {
+            entries: vec![
+                AstEntry::new_add(b"KEY".to_vec(), b"UNQUOTED_STRING".to_vec()),
+                AstEntry::new_assign(b"KEY".to_vec(), b"QUOTED String @".to_vec()),
+            ]
+        }
+    )]
+    #[case(
+        b"KEY+=UNQUOTED_STRING",
+        AstTree {
+            entries: vec![
+                AstEntry::new_add(b"KEY".to_vec(), b"UNQUOTED_STRING".to_vec())
+            ]
+        }
+    )]
+    #[case(
+        b"KEY-=UNQUOTED_STRING",
+        AstTree {
+            entries: vec![
+                AstEntry::new_remove(b"KEY".to_vec(), b"UNQUOTED_STRING".to_vec())
+            ]
+        }
+    )]
+    #[case(
+        b"KEY:=UNQUOTED_STRING",
+        AstTree {
+            entries: vec![
+                AstEntry::new_assign_if_undefined(b"KEY".to_vec(), b"UNQUOTED_STRING".to_vec())
+            ]
+        }
+    )]
+    #[case(
+        b"KEY!",
+        AstTree {
+            entries: vec![
+                AstEntry::new_reset(b"KEY".to_vec())
+            ]
+        }
+    )]
+    #[case(
+        b"KEY !",
+        AstTree {
+            entries: vec![
+                AstEntry::new_reset(b"KEY".to_vec())
+            ]
+        }
+    )]
+    #[case(
+        b"KEY !",
+        AstTree {
+            entries: vec![
+                AstEntry::new_reset(b"KEY".to_vec())
+            ]
+        }
+    )]
+    #[case(
+        b"KEY!
+        KEY=\"QUOTED String @\";
+        ",
+        AstTree {
+            entries: vec![
+                AstEntry::new_reset(b"KEY".to_vec()),
+                AstEntry::new_assign(b"KEY".to_vec(), b"QUOTED String @".to_vec()),
+            ]
+        }
+    )]
+    #[case(
+        b"KEY!NEXT-=VALUE",
+        AstTree {
+            entries: vec![
+                AstEntry::new_reset(b"KEY".to_vec()),
+                AstEntry::new_remove(b"NEXT".to_vec(), b"VALUE".to_vec()),
+            ]
+        }
+    )]
+    fn parse_key_op_value(#[case] input: &[u8], #[case] output: AstTree) {
+        let ast = AstParser::new().parse_bytes(input.to_vec()).to_tree();
         assert!(ast.is_ok(), "error converting input to tree: {ast:?}");
         assert_eq!(ast.unwrap(), output);
     }
