@@ -58,10 +58,10 @@ impl AstEntry {
         })
     }
 
-    pub fn new_group(key: impl Into<Bytes>, values: Vec<AstEntry>) -> Self {
+    pub fn new_group(key: impl Into<Bytes>, values: impl IntoIterator<Item = AstEntry>) -> Self {
         Self(ImplAstEntry::Group {
             name: key.into(),
-            entries: values,
+            entries: values.into_iter().collect(),
         })
     }
 

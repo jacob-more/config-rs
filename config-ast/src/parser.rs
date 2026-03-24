@@ -685,7 +685,7 @@ mod property_test {
         pub fn as_ast_entry(&self) -> AstEntry {
             AstEntry::new_group(
                 self.identifier.val.clone(),
-                self.entries.iter().map(|(e, _)| e.as_ast_entry()).collect(),
+                self.entries.iter().map(|(e, _)| e.as_ast_entry()),
             )
         }
     }
