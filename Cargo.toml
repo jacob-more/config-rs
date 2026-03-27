@@ -1,6 +1,8 @@
 [workspace]
 members = [
     "config",
+    "config-ir",
     "config-ast",
+    "display-ext",
 ]
 resolver = "3"

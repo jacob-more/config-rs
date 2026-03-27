@@ -10,7 +10,9 @@ name = "config"
 # name = "config"
 
 [dependencies]
+bytes = "1.11"
 config-ast = { path = "../config-ast"}
+config-ir = { path = "../config-ir" }
 regex = "1.12"
 
 # CLI Dependencies

@@ -1,0 +1,5 @@
+[package]
+name = "display-ext"
+version = "0.1.0"
+edition = "2024"
+description = "Additional types that implement Display for formatting"

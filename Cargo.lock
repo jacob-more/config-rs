@@ -178,8 +178,10 @@ name = "config"
 version = "0.1.0"
 dependencies = [
  "anstream 0.6.19",
+ "bytes",
  "clap",
  "config-ast",
+ "config-ir",
  "owo-colors",
  "regex",
  "thiserror",
@@ -190,12 +192,30 @@ name = "config-ast"
 version = "0.1.0"
 dependencies = [
  "bytes",
+ "display-ext",
  "proptest",
  "proptest-derive",
  "regex",
  "rstest",
  "thiserror",
 ]
+
+[[package]]
+name = "config-ir"
+version = "0.1.0"
+dependencies = [
+ "bytes",
+ "config-ast",
+ "display-ext",
+ "proptest",
+ "proptest-derive",
+ "rstest",
+ "thiserror",
+]
+
+[[package]]
+name = "display-ext"
+version = "0.1.0"
 
 [[package]]
 name = "equivalent"

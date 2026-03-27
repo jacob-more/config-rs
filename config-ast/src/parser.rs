@@ -4,7 +4,10 @@ use bytes::Bytes;
 use regex::bytes::Regex;
 use thiserror::Error;
 
-use crate::{AstEntry, AstTree};
+use crate::{
+    AstEntry, AstTree, OPERATOR_ADD, OPERATOR_ASSIGN, OPERATOR_ASSIGN_IF_UNDEFINED,
+    OPERATOR_REMOVE, OPERATOR_RESET,
+};
 
 const CAPTURE_GB_GROUP: &str = "grp";
 const CAPTURE_GB_BODY_OPEN: &str = "gbo";
@@ -42,11 +45,27 @@ pub enum AstParseError {
     UnknownSequence { line: usize, sequence: Bytes },
 }
 
+impl Default for AstParser {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl AstParser {
     pub fn new() -> Self {
         static PARSE_PATERN: LazyLock<Regex> = LazyLock::new(|| {
             const IDENTIFIER: &str = r"(?:[A-Za-z0-9_]+)";
-            const KVP_ASSIGN_OPERATORS: &str = r"(?:=|:=|\+=|-=)";
+            let kvp_assign_operators = from_fn(|f| {
+                write!(
+                    f,
+                    r"(?:{}{}{}{}{})",
+                    regex::escape(OPERATOR_ASSIGN),
+                    regex::escape(OPERATOR_ASSIGN_IF_UNDEFINED),
+                    regex::escape(OPERATOR_ADD),
+                    regex::escape(OPERATOR_REMOVE),
+                    regex::escape(OPERATOR_RESET)
+                )
+            });
             const KVP_RESET_OPERATOR: &str = r"(?:!)";
             const TYPE_QUOTED_STRING: &str = r#"(?:[^"\\]|\\.)*"#;
             const TYPE_UNQUOTED_STRING: &str = r"(?:[A-Za-z0-9_./\-]+)";
@@ -65,7 +84,7 @@ impl AstParser {
                 write!(f, r"(?:")?;
                 write!(
                     f,
-                    r"(?<{CAPTURE_KVP_ASSIGN_OPERATOR}>{KVP_ASSIGN_OPERATORS})"
+                    r"(?<{CAPTURE_KVP_ASSIGN_OPERATOR}>{kvp_assign_operators})"
                 )?;
                 write!(f, r"{WHITESPACE}*")?;
                 write!(f, r"(?:")?;
