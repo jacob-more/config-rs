@@ -7,7 +7,7 @@ use std::{
 };
 
 use bytes::Bytes;
-use config_ir::IrEntry;
+use config_ast::AstEntry;
 use thiserror::Error;
 
 mod access_control_list;
@@ -218,20 +218,20 @@ pub trait Config<T>
 where
     T: Replayable,
 {
-    fn parse_ir_entry(&mut self, entry: IrEntry) -> Result<(), ConfigParseError> {
+    fn parse_ast_entry(&mut self, entry: AstEntry) -> Result<(), ConfigParseError> {
         match entry {
-            IrEntry::Group { .. } => panic!("groups must be handled before this parser"),
-            IrEntry::Assign { name: _, value } => {
+            AstEntry::Group { .. } => panic!("groups must be handled before this parser"),
+            AstEntry::Assign { key: _, value } => {
                 self.assign(T::pre_parse_value(value)?);
             }
-            IrEntry::AssignIfUndefined { name: _, value } => {
+            AstEntry::AssignIfUndefined { key: _, value } => {
                 self.assign_if_undefined(T::pre_parse_value(value)?)
             }
-            IrEntry::Add { name: _, value } => self.add(T::pre_parse_value(value)?),
-            IrEntry::Remove { name: _, value } => {
+            AstEntry::Add { key: _, value } => self.add(T::pre_parse_value(value)?),
+            AstEntry::Remove { key: _, value } => {
                 self.remove(T::pre_parse_value(value)?);
             }
-            IrEntry::Reset { name: _ } => self.reset(),
+            AstEntry::Reset { key: _ } => self.reset(),
         }
         Ok(())
     }

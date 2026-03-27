@@ -1,6 +1,7 @@
 use std::{ffi::OsStr, fmt::from_fn, os::unix::ffi::OsStrExt, sync::LazyLock};
 
 use bytes::Bytes;
+use display_ext::Join;
 use regex::bytes::Regex;
 use thiserror::Error;
 
@@ -20,6 +21,12 @@ const CAPTURE_KVP_VALUE_QUOTED: &str = "qval";
 const CAPTURE_KVP_VALUE_UNQUOTED: &str = "uval";
 
 const CAPTURE_WHITESPACE: &str = "wsp";
+
+const OPERATOR_BYTES_ASSIGN: &[u8] = OPERATOR_ASSIGN.as_bytes();
+const OPERATOR_BYTES_ASSIGN_IF_UNDEFINED: &[u8] = OPERATOR_ASSIGN_IF_UNDEFINED.as_bytes();
+const OPERATOR_BYTES_ADD: &[u8] = OPERATOR_ADD.as_bytes();
+const OPERATOR_BYTES_REMOVE: &[u8] = OPERATOR_REMOVE.as_bytes();
+const OPERATOR_BYTES_RESET: &[u8] = OPERATOR_RESET.as_bytes();
 
 #[derive(Debug, Clone)]
 pub struct AstParser {
@@ -58,15 +65,26 @@ impl AstParser {
             let kvp_assign_operators = from_fn(|f| {
                 write!(
                     f,
-                    r"(?:{}{}{}{}{})",
-                    regex::escape(OPERATOR_ASSIGN),
-                    regex::escape(OPERATOR_ASSIGN_IF_UNDEFINED),
-                    regex::escape(OPERATOR_ADD),
-                    regex::escape(OPERATOR_REMOVE),
-                    regex::escape(OPERATOR_RESET)
+                    r"(?:{})",
+                    Join::new(
+                        [
+                            regex::escape(OPERATOR_ASSIGN),
+                            regex::escape(OPERATOR_ASSIGN_IF_UNDEFINED),
+                            regex::escape(OPERATOR_ADD),
+                            regex::escape(OPERATOR_REMOVE),
+                        ]
+                        .into_iter(),
+                        '|'
+                    )
                 )
             });
-            const KVP_RESET_OPERATOR: &str = r"(?:!)";
+            let kvp_reset_operators = from_fn(|f| {
+                write!(
+                    f,
+                    r"(?:{})",
+                    Join::new([regex::escape(OPERATOR_RESET)].into_iter(), '|')
+                )
+            });
             const TYPE_QUOTED_STRING: &str = r#"(?:[^"\\]|\\.)*"#;
             const TYPE_UNQUOTED_STRING: &str = r"(?:[A-Za-z0-9_./\-]+)";
             const WHITESPACE: &str = r"(?:\s|\r\n|\n)";
@@ -99,7 +117,7 @@ impl AstParser {
                 )?;
                 write!(f, r")")?;
                 write!(f, r"|")?;
-                write!(f, r"(?<{CAPTURE_KVP_RESET_OPERATOR}>{KVP_RESET_OPERATOR})")?;
+                write!(f, r"(?<{CAPTURE_KVP_RESET_OPERATOR}>{kvp_reset_operators})")?;
                 write!(f, r")")
             });
             let capture_whitespace =
@@ -185,30 +203,50 @@ impl AstParse {
             next_start = matched.end();
 
             if let Some(key) = captured.name(CAPTURE_KVP_KEY) {
-                let (op, value) = if let Some(op) = captured.name(CAPTURE_KVP_ASSIGN_OPERATOR) {
-                    let value = if let Some(value) = captured.name(CAPTURE_KVP_VALUE_QUOTED) {
+                let key = self.buffer.slice_ref(key.as_bytes());
+                let entry = if let Some(op) = captured.name(CAPTURE_KVP_ASSIGN_OPERATOR) {
+                    let mut value = if let Some(value) = captured.name(CAPTURE_KVP_VALUE_QUOTED) {
                         self.buffer.slice_ref(value.as_bytes())
                     } else if let Some(value) = captured.name(CAPTURE_KVP_VALUE_UNQUOTED) {
                         self.buffer.slice_ref(value.as_bytes())
                     } else {
                         Bytes::new()
                     };
-                    (op, value)
+                    // Replacing escaped characters requires allocating a new
+                    // `Bytes` buffer. We'd rather not re-allocate and instead just
+                    // point to the buffer from which everything was parsed.
+                    if value.contains(&b'\\') {
+                        value = Bytes::from_iter(EscapeBytes::new(value.into_iter()))
+                    }
+                    match op.as_bytes() {
+                        OPERATOR_BYTES_ASSIGN => AstEntry::new_assign(key, value),
+                        OPERATOR_BYTES_ASSIGN_IF_UNDEFINED => {
+                            AstEntry::new_assign_if_undefined(key, value)
+                        }
+                        OPERATOR_BYTES_ADD => AstEntry::new_add(key, value),
+                        OPERATOR_BYTES_REMOVE => AstEntry::new_remove(key, value),
+                        _ => panic!(
+                            "operator should not match assign operators: {}",
+                            OsStr::from_bytes(op.as_bytes()).display()
+                        ),
+                    }
                 } else {
                     let op = captured
                         .name(CAPTURE_KVP_RESET_OPERATOR)
                         .expect("an operation must be present if key-op-value key is found");
-                    (op, Bytes::new())
+                    match op.as_bytes() {
+                        OPERATOR_BYTES_RESET => AstEntry::new_reset(key),
+                        _ => panic!(
+                            "operator should not match reset operators: {}",
+                            OsStr::from_bytes(op.as_bytes()).display()
+                        ),
+                    }
                 };
                 stack
                     .last_mut()
                     .expect("stack initialized with one element")
                     .entries
-                    .push(AstEntry::new_key_value(
-                        self.buffer.slice_ref(key.as_bytes()),
-                        self.buffer.slice_ref(op.as_bytes()),
-                        value,
-                    ));
+                    .push(entry);
                 continue;
             }
 
@@ -266,6 +304,31 @@ impl AstParse {
     }
 }
 
+struct EscapeBytes<I>(I);
+impl<I> EscapeBytes<I>
+where
+    I: Iterator<Item = u8>,
+{
+    fn new(unescaped_string: I) -> Self {
+        Self(unescaped_string)
+    }
+}
+impl<I: Iterator> Iterator for EscapeBytes<I>
+where
+    I: Iterator<Item = u8>,
+{
+    type Item = I::Item;
+
+    fn next(&mut self) -> Option<I::Item> {
+        let byte = self.0.next()?;
+        if byte == b'\\' {
+            Some(self.0.next().unwrap_or(byte))
+        } else {
+            Some(byte)
+        }
+    }
+}
+
 #[cfg(test)]
 mod test {
     use rstest::rstest;
@@ -301,7 +364,7 @@ mod test {
     #[case(
         b"KEY=\"QUOTED String 0123456789 \\\\ \\\"\"",
         AstTree::from_iter(vec![
-            AstEntry::new_assign(b"KEY".to_vec(), b"QUOTED String 0123456789 \\\\ \\\"".to_vec())
+            AstEntry::new_assign(b"KEY".to_vec(), b"QUOTED String 0123456789 \\ \"".to_vec())
         ])
     )]
     #[case(
@@ -434,11 +497,19 @@ mod test {
 
 #[cfg(test)]
 mod property_test {
+    use std::{ffi::OsStr, ops::Deref, os::unix::ffi::OsStrExt};
+
     use bytes::Bytes;
     use proptest::prelude::*;
     use proptest_derive::Arbitrary;
 
-    use crate::{AstEntry, AstTree, parser::AstParser};
+    use crate::{
+        AstEntry, AstTree,
+        parser::{
+            AstParser, EscapeBytes, OPERATOR_BYTES_ADD, OPERATOR_BYTES_ASSIGN,
+            OPERATOR_BYTES_ASSIGN_IF_UNDEFINED, OPERATOR_BYTES_REMOVE, OPERATOR_BYTES_RESET,
+        },
+    };
 
     trait AsBytes {
         fn bytes(&self) -> impl Iterator<Item = u8>;
@@ -569,11 +640,26 @@ mod property_test {
     }
     impl PropKeyAssignUnquotedValue {
         pub fn as_ast_entry(&self) -> AstEntry {
-            AstEntry::new_key_value(
-                self.identifier.val.clone(),
-                self.op.val.clone(),
-                self.value.val.clone(),
-            )
+            match self.op.val.deref() {
+                OPERATOR_BYTES_ASSIGN => {
+                    AstEntry::new_assign(self.identifier.val.clone(), self.value.val.clone())
+                }
+                OPERATOR_BYTES_ASSIGN_IF_UNDEFINED => AstEntry::new_assign_if_undefined(
+                    self.identifier.val.clone(),
+                    self.value.val.clone(),
+                ),
+                OPERATOR_BYTES_ADD => {
+                    AstEntry::new_add(self.identifier.val.clone(), self.value.val.clone())
+                }
+                OPERATOR_BYTES_REMOVE => {
+                    AstEntry::new_remove(self.identifier.val.clone(), self.value.val.clone())
+                }
+                OPERATOR_BYTES_RESET => AstEntry::new_reset(self.identifier.val.clone()),
+                _ => panic!(
+                    "operator not supported: {}",
+                    OsStr::from_bytes(self.op.val.deref()).display()
+                ),
+            }
         }
     }
     impl AsBytes for PropKeyAssignUnquotedValue {
@@ -604,11 +690,27 @@ mod property_test {
     }
     impl PropKeyAssignQuotedValue {
         pub fn as_ast_entry(&self) -> AstEntry {
-            AstEntry::new_key_value(
-                self.identifier.val.clone(),
-                self.op.val.clone(),
-                self.value.val.clone(),
-            )
+            let value = EscapeBytes::new(self.value.val.iter().copied());
+            match self.op.val.deref() {
+                OPERATOR_BYTES_ASSIGN => {
+                    AstEntry::new_assign(self.identifier.val.clone(), value.collect::<Bytes>())
+                }
+                OPERATOR_BYTES_ASSIGN_IF_UNDEFINED => AstEntry::new_assign_if_undefined(
+                    self.identifier.val.clone(),
+                    value.collect::<Bytes>(),
+                ),
+                OPERATOR_BYTES_ADD => {
+                    AstEntry::new_add(self.identifier.val.clone(), value.collect::<Bytes>())
+                }
+                OPERATOR_BYTES_REMOVE => {
+                    AstEntry::new_remove(self.identifier.val.clone(), value.collect::<Bytes>())
+                }
+                OPERATOR_BYTES_RESET => AstEntry::new_reset(self.identifier.val.clone()),
+                _ => panic!(
+                    "operator not supported: {}",
+                    OsStr::from_bytes(self.op.val.deref()).display()
+                ),
+            }
         }
     }
     impl AsBytes for PropKeyAssignQuotedValue {

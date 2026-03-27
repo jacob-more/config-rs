@@ -181,7 +181,6 @@ dependencies = [
  "bytes",
  "clap",
  "config-ast",
- "config-ir",
  "owo-colors",
  "regex",
  "thiserror",
@@ -196,19 +195,6 @@ dependencies = [
  "proptest",
  "proptest-derive",
  "regex",
- "rstest",
- "thiserror",
-]
-
-[[package]]
-name = "config-ir"
-version = "0.1.0"
-dependencies = [
- "bytes",
- "config-ast",
- "display-ext",
- "proptest",
- "proptest-derive",
  "rstest",
  "thiserror",
 ]
