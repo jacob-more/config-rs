@@ -1,5 +1,6 @@
 use std::{
     ffi::OsStr,
+    fmt::Debug,
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
     ops::Deref,
     os::unix::ffi::OsStrExt,
@@ -10,10 +11,17 @@ use bytes::Bytes;
 use config_ast::AstOperation;
 use thiserror::Error;
 
+pub(crate) mod history;
+
 mod access_control_list;
 mod list;
 mod set;
 mod value;
+
+pub use access_control_list::*;
+pub use list::*;
+pub use set::*;
+pub use value::*;
 
 #[derive(Debug, Error)]
 enum ReprConfigParseError {
@@ -49,7 +57,7 @@ impl_from_config_parse_error!(std::str::Utf8Error);
 impl_from_config_parse_error!(std::net::AddrParseError);
 
 pub trait Replayable {
-    type Repr: Clone + Sized;
+    type Repr: Debug + Clone + Sized;
 
     fn pre_parse_value(value: Bytes) -> Result<Self::Repr, ConfigParseError>;
     fn parse_value(value: &Self::Repr) -> &Self;

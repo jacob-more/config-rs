@@ -1,8 +1,8 @@
-use crate::{Config, ReplayOperation, Replayable};
+use crate::{Config, ReplayOperation, Replayable, history::History};
 
 pub struct ConfigValue<T: Replayable> {
     key: &'static str,
-    replay: Vec<ReplayOperation<T>>,
+    history: History<T>,
     default: Option<T::Repr>,
     config: Option<T::Repr>,
     is_default: bool,
@@ -16,7 +16,7 @@ where
         let default = default.map(|x| x.unparse_value());
         Self {
             key,
-            replay: Vec::new(),
+            history: History::new(),
             config: default.clone(),
             default,
             is_default: true,
@@ -40,25 +40,21 @@ where
     T::Repr: PartialEq,
 {
     fn assign(&mut self, value: <T as Replayable>::Repr) {
-        self.replay.clear();
-        self.replay.push(ReplayOperation::Assign(value.clone()));
+        self.history.assign(value.clone());
         self.config = Some(value);
         self.is_default = false;
     }
 
     fn assign_if_undefined(&mut self, value: T::Repr) {
         if !self.is_defined() {
-            self.replay
-                .push(ReplayOperation::AssignIfUndefined(value.clone()));
-            self.config = Some(value);
+            self.config = Some(value.clone());
             self.is_default = false;
-        } else {
-            self.replay.push(ReplayOperation::AssignIfUndefined(value));
         }
+        self.history.assign_if_undefined(value);
     }
 
     fn add(&mut self, value: T::Repr) {
-        self.replay.push(ReplayOperation::Add(value.clone()));
+        self.history.add(value.clone());
         self.config = Some(value);
         self.is_default = false;
     }
@@ -67,12 +63,11 @@ where
         if self.config.take_if(|x| x == &value).is_some() {
             self.is_default = false;
         }
-        self.replay.push(ReplayOperation::Remove(value));
+        self.history.remove(value.clone());
     }
 
     fn reset(&mut self) {
-        self.replay.clear();
-        self.replay.push(ReplayOperation::Reset);
+        self.history.reset();
         self.config = self.default.clone();
         self.is_default = true;
     }
@@ -89,6 +84,6 @@ where
     where
         T: 'a,
     {
-        self.replay.iter()
+        self.history.history()
     }
 }

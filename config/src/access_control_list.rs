@@ -1,4 +1,4 @@
-use crate::{Config, ReplayOperation, Replayable};
+use crate::{Config, ReplayOperation, Replayable, history::History};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum AclAction {
@@ -8,7 +8,7 @@ pub enum AclAction {
 
 pub struct ConfigAcl<T: Replayable> {
     key: &'static str,
-    replay: Vec<ReplayOperation<T>>,
+    history: History<T>,
     default: Vec<(AclAction, T::Repr)>,
     config: Vec<(AclAction, T::Repr)>,
     is_default: bool,
@@ -25,7 +25,7 @@ where
             .collect();
         Self {
             key,
-            replay: Vec::new(),
+            history: History::new(),
             config: default.clone(),
             default,
             is_default: true,
@@ -36,8 +36,12 @@ where
         self.key
     }
 
-    pub fn len(&self) -> usize {
+    pub const fn len(&self) -> usize {
         self.config.len()
+    }
+
+    pub const fn is_empty(&self) -> bool {
+        self.config.is_empty()
     }
 
     pub fn get(&self, index: usize) -> Option<(&AclAction, &T)> {
@@ -59,8 +63,7 @@ where
     T::Repr: PartialEq,
 {
     fn assign(&mut self, value: <T as Replayable>::Repr) {
-        self.replay.clear();
-        self.replay.push(ReplayOperation::Assign(value.clone()));
+        self.history.assign(value.clone());
         self.config.clear();
         self.config.push((AclAction::Allow, value));
         self.is_default = false;
@@ -68,17 +71,14 @@ where
 
     fn assign_if_undefined(&mut self, value: T::Repr) {
         if !self.is_defined() {
-            self.replay
-                .push(ReplayOperation::AssignIfUndefined(value.clone()));
-            self.config.push((AclAction::Allow, value));
+            self.config.push((AclAction::Allow, value.clone()));
             self.is_default = false;
-        } else {
-            self.replay.push(ReplayOperation::AssignIfUndefined(value));
         }
+        self.history.assign_if_undefined(value);
     }
 
     fn add(&mut self, value: T::Repr) {
-        self.replay.push(ReplayOperation::Add(value.clone()));
+        self.history.add(value.clone());
         // The new action takes precedence over any exact duplicates.
         self.config.retain(|(_, x)| x != &value);
         self.config.push((AclAction::Allow, value));
@@ -86,7 +86,7 @@ where
     }
 
     fn remove(&mut self, value: T::Repr) {
-        self.replay.push(ReplayOperation::Remove(value.clone()));
+        self.history.remove(value.clone());
         // The new action takes precedence over any exact duplicates.
         self.config.retain(|(_, x)| x != &value);
         self.config.push((AclAction::Deny, value));
@@ -94,8 +94,7 @@ where
     }
 
     fn reset(&mut self) {
-        self.replay.clear();
-        self.replay.push(ReplayOperation::Reset);
+        self.history.reset();
         self.config.clear();
         self.config.extend(self.default.iter().cloned());
         self.is_default = true;
@@ -113,6 +112,6 @@ where
     where
         T: 'a,
     {
-        self.replay.iter()
+        self.history.history()
     }
 }
