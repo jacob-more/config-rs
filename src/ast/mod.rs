@@ -3,7 +3,7 @@ use std::{ffi::OsStr, fmt::Display, os::unix::ffi::OsStrExt};
 use bytes::Bytes;
 use thiserror::Error;
 
-use crate::{ast::parser::AstParser, ext::Join};
+use crate::{ast::parser::AstParser, ext::IterJoin};
 
 mod parser;
 
@@ -130,7 +130,7 @@ impl AstEntry {
 
 impl Display for AstTree {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", Join::new(self.entries.iter(), ' '))
+        write!(f, "{}", self.entries.iter().join(' '))
     }
 }
 
@@ -154,7 +154,7 @@ impl Display for AstEntry {
             Self::Group { key: name, entries } => {
                 write!(f, "{}: {{", OsStr::from_bytes(name).display())?;
                 if entries.is_empty() {
-                    write!(f, "{} }}", Join::new(entries.iter(), ' '))?;
+                    write!(f, "{} }}", entries.join(' '))?;
                 } else {
                     write!(f, "}};")?;
                 }

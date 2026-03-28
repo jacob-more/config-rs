@@ -9,7 +9,7 @@ use crate::{
         AstEntry, AstTree, OPERATOR_ADD, OPERATOR_ASSIGN, OPERATOR_ASSIGN_IF_UNDEFINED,
         OPERATOR_REMOVE, OPERATOR_RESET,
     },
-    ext::Join,
+    ext::IterJoin,
 };
 
 const CAPTURE_GB_GROUP: &str = "grp";
@@ -68,23 +68,19 @@ impl AstParser {
                 write!(
                     f,
                     r"(?:{})",
-                    Join::new(
-                        [
-                            regex::escape(OPERATOR_ASSIGN),
-                            regex::escape(OPERATOR_ASSIGN_IF_UNDEFINED),
-                            regex::escape(OPERATOR_ADD),
-                            regex::escape(OPERATOR_REMOVE),
-                        ]
-                        .into_iter(),
-                        '|'
-                    )
+                    [
+                        regex::escape(OPERATOR_ASSIGN),
+                        regex::escape(OPERATOR_ASSIGN_IF_UNDEFINED),
+                        regex::escape(OPERATOR_ADD),
+                        regex::escape(OPERATOR_REMOVE),
+                    ].join('|'),
                 )
             });
             let kvp_reset_operators = from_fn(|f| {
                 write!(
                     f,
                     r"(?:{})",
-                    Join::new([regex::escape(OPERATOR_RESET)].into_iter(), '|')
+                    [regex::escape(OPERATOR_RESET)].join('|'),
                 )
             });
             const TYPE_QUOTED_STRING: &str = r#"(?:[^"\\]|\\.)*"#;

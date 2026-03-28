@@ -1,15 +1,25 @@
 use std::fmt::Display;
 
+pub trait IterJoin<I> {
+    fn join<S>(self, separator: S) -> Join<I, S> where Self: Sized;
+}
+
+impl<I> IterJoin<I::IntoIter> for I where I: IntoIterator {
+    fn join<S>(self, separator: S) -> Join<I::IntoIter, S> where Self: Sized {
+        Join::new(self.into_iter(), separator)
+    }
+}
+
 pub struct Join<I, S> {
     values: I,
     sep: S,
 }
 
 impl<I, S> Join<I, S> {
-    pub fn new(values: I, seperator: S) -> Self {
+    pub fn new(values: I, separator: S) -> Self {
         Self {
             values,
-            sep: seperator,
+            sep: separator,
         }
     }
 }
@@ -38,7 +48,7 @@ mod test {
 
     use rstest::rstest;
 
-    use crate::ext::Join;
+    use crate::ext::{IterJoin, Join};
 
     #[rstest]
     #[case(Join::new(std::iter::empty::<&str>(), ""), "")]
@@ -89,6 +99,16 @@ mod test {
     #[case(Join::new(["hello", "again", "world"].iter(), '-'), "hello-again-world")]
     #[case(Join::new([0, 1, 2].iter(), true), "0true1true2")]
     fn thrice_iter_to_string<T>(#[case] input: T, #[case] output: &str) where T: Display {
+        assert_eq!(&input.to_string(), output);
+    }
+
+    #[rstest]
+    #[case(std::iter::empty::<u64>().join("never"), "")]
+    #[case(["once"].join("never"), "once")]
+    #[case(["foo", "bar"].join(" bas "), "foo bas bar")]
+    #[case(["hello", "again", "world"].join('-'), "hello-again-world")]
+    #[case([0, 1, 2].join(true), "0true1true2")]
+    fn iter_join<T>(#[case] input: T, #[case] output: &str) where T: Display {
         assert_eq!(&input.to_string(), output);
     }
 }
