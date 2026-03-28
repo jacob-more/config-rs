@@ -58,7 +58,7 @@ impl AstTree {
     {
         Ok(AstParser::new()
             .parse_reader(reader)?
-            .to_tree()
+            .parse_into_tree()
             .map_err(|e| e.into()))
     }
 
@@ -66,7 +66,7 @@ impl AstTree {
     where
         Bytes: From<B>,
     {
-        Ok(AstParser::new().parse_bytes(bytes).to_tree()?)
+        Ok(AstParser::new().parse_bytes(bytes).parse_into_tree()?)
     }
 }
 
