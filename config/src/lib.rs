@@ -7,7 +7,7 @@ use std::{
 };
 
 use bytes::Bytes;
-use config_ast::AstEntry;
+use config_ast::AstOperation;
 use thiserror::Error;
 
 mod access_control_list;
@@ -192,14 +192,14 @@ impl_replayable_integer!(Ipv4Addr);
 impl_replayable_integer!(Ipv6Addr);
 
 #[derive(Debug)]
-pub enum ReplayEntry<T: Replayable> {
+pub enum ReplayOperation<T: Replayable> {
     Assign(T::Repr),
     AssignIfUndefined(T::Repr),
     Add(T::Repr),
     Remove(T::Repr),
     Reset,
 }
-impl<T> Clone for ReplayEntry<T>
+impl<T> Clone for ReplayOperation<T>
 where
     T: Replayable,
 {
@@ -218,34 +218,6 @@ pub trait Config<T>
 where
     T: Replayable,
 {
-    fn parse_ast_entry(&mut self, entry: AstEntry) -> Result<(), ConfigParseError> {
-        match entry {
-            AstEntry::Group { .. } => panic!("groups must be handled before this parser"),
-            AstEntry::Assign { key: _, value } => {
-                self.assign(T::pre_parse_value(value)?);
-            }
-            AstEntry::AssignIfUndefined { key: _, value } => {
-                self.assign_if_undefined(T::pre_parse_value(value)?)
-            }
-            AstEntry::Add { key: _, value } => self.add(T::pre_parse_value(value)?),
-            AstEntry::Remove { key: _, value } => {
-                self.remove(T::pre_parse_value(value)?);
-            }
-            AstEntry::Reset { key: _ } => self.reset(),
-        }
-        Ok(())
-    }
-    fn apply(&mut self, event: ReplayEntry<T>) {
-        match event {
-            ReplayEntry::Assign(value) => self.assign(value),
-            ReplayEntry::AssignIfUndefined(value) => self.assign_if_undefined(value),
-            ReplayEntry::Add(value) => self.add(value),
-            ReplayEntry::Remove(value) => self.remove(value),
-            ReplayEntry::Reset => self.reset(),
-        }
-    }
-    fn replay(&mut self, other: &Self);
-
     fn assign(&mut self, value: T::Repr);
     fn assign_if_undefined(&mut self, value: T::Repr);
     fn add(&mut self, value: T::Repr);
@@ -254,4 +226,45 @@ where
 
     fn is_default(&self) -> bool;
     fn is_defined(&self) -> bool;
+    fn history<'a>(&'a self) -> impl Iterator<Item = &'a ReplayOperation<T>>
+    where
+        T: 'a;
+}
+
+pub trait ConfigExt<T>: Config<T>
+where
+    T: Replayable,
+{
+    fn parse_ast_entry(&mut self, operation: AstOperation) -> Result<(), ConfigParseError> {
+        match operation {
+            AstOperation::Assign(value) => self.assign(T::pre_parse_value(value)?),
+            AstOperation::AssignIfUndefined(value) => {
+                self.assign_if_undefined(T::pre_parse_value(value)?)
+            }
+            AstOperation::Add(value) => self.add(T::pre_parse_value(value)?),
+            AstOperation::Remove(value) => self.remove(T::pre_parse_value(value)?),
+            AstOperation::Reset => self.reset(),
+        }
+        Ok(())
+    }
+
+    fn apply(&mut self, event: ReplayOperation<T>) {
+        match event {
+            ReplayOperation::Assign(value) => self.assign(value),
+            ReplayOperation::AssignIfUndefined(value) => self.assign_if_undefined(value),
+            ReplayOperation::Add(value) => self.add(value),
+            ReplayOperation::Remove(value) => self.remove(value),
+            ReplayOperation::Reset => self.reset(),
+        }
+    }
+
+    fn replay(&mut self, other: &Self) {
+        other.history().cloned().for_each(|event| self.apply(event));
+    }
+}
+impl<C, T> ConfigExt<T> for C
+where
+    C: Config<T>,
+    T: Replayable,
+{
 }

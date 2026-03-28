@@ -25,12 +25,17 @@ pub struct AstTree {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AstEntry {
-    Group { name: Bytes, entries: Vec<AstEntry> },
-    Assign { key: Bytes, value: Bytes },
-    AssignIfUndefined { key: Bytes, value: Bytes },
-    Add { key: Bytes, value: Bytes },
-    Remove { key: Bytes, value: Bytes },
-    Reset { key: Bytes },
+    Group { key: Bytes, entries: Vec<AstEntry> },
+    Operation { key: Bytes, operation: AstOperation },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AstOperation {
+    Assign(Bytes),
+    AssignIfUndefined(Bytes),
+    Add(Bytes),
+    Remove(Bytes),
+    Reset,
 }
 
 impl AstTree {
@@ -83,41 +88,44 @@ impl FromIterator<AstEntry> for AstTree {
 impl AstEntry {
     pub fn new_group(key: impl Into<Bytes>, values: impl IntoIterator<Item = AstEntry>) -> Self {
         Self::Group {
-            name: key.into(),
+            key: key.into(),
             entries: values.into_iter().collect(),
         }
     }
 
     pub fn new_assign(key: impl Into<Bytes>, value: impl Into<Bytes>) -> Self {
-        Self::Assign {
+        Self::Operation {
             key: key.into(),
-            value: value.into(),
+            operation: AstOperation::Assign(value.into()),
         }
     }
 
     pub fn new_assign_if_undefined(key: impl Into<Bytes>, value: impl Into<Bytes>) -> Self {
-        Self::AssignIfUndefined {
+        Self::Operation {
             key: key.into(),
-            value: value.into(),
+            operation: AstOperation::AssignIfUndefined(value.into()),
         }
     }
 
     pub fn new_add(key: impl Into<Bytes>, value: impl Into<Bytes>) -> Self {
-        Self::Add {
+        Self::Operation {
             key: key.into(),
-            value: value.into(),
+            operation: AstOperation::Add(value.into()),
         }
     }
 
     pub fn new_remove(key: impl Into<Bytes>, value: impl Into<Bytes>) -> Self {
-        Self::Remove {
+        Self::Operation {
             key: key.into(),
-            value: value.into(),
+            operation: AstOperation::Remove(value.into()),
         }
     }
 
     pub fn new_reset(key: impl Into<Bytes>) -> Self {
-        Self::Reset { key: key.into() }
+        Self::Operation {
+            key: key.into(),
+            operation: AstOperation::Reset,
+        }
     }
 }
 
@@ -144,7 +152,7 @@ impl Display for AstEntry {
         }
 
         match self {
-            Self::Group { name, entries } => {
+            Self::Group { key: name, entries } => {
                 write!(f, "{}: {{", OsStr::from_bytes(name).display())?;
                 if entries.is_empty() {
                     write!(f, "{} }}", Join::new(entries.iter(), ' '))?;
@@ -153,15 +161,26 @@ impl Display for AstEntry {
                 }
                 Ok(())
             }
-            Self::Assign { key, value } => display_key_op_value(f, key, OPERATOR_ASSIGN, value),
-            Self::AssignIfUndefined { key, value } => {
-                display_key_op_value(f, key, OPERATOR_ASSIGN_IF_UNDEFINED, value)
-            }
-            Self::Add { key, value } => display_key_op_value(f, key, OPERATOR_ADD, value),
-            Self::Remove { key, value } => display_key_op_value(f, key, OPERATOR_REMOVE, value),
-            Self::Reset { key } => {
-                write!(f, "{} {OPERATOR_RESET};", OsStr::from_bytes(key).display())
-            }
+            Self::Operation {
+                key,
+                operation: AstOperation::Assign(value),
+            } => display_key_op_value(f, key, OPERATOR_ASSIGN, value),
+            Self::Operation {
+                key,
+                operation: AstOperation::AssignIfUndefined(value),
+            } => display_key_op_value(f, key, OPERATOR_ASSIGN_IF_UNDEFINED, value),
+            Self::Operation {
+                key,
+                operation: AstOperation::Add(value),
+            } => display_key_op_value(f, key, OPERATOR_ADD, value),
+            Self::Operation {
+                key,
+                operation: AstOperation::Remove(value),
+            } => display_key_op_value(f, key, OPERATOR_REMOVE, value),
+            Self::Operation {
+                key,
+                operation: AstOperation::Reset,
+            } => write!(f, "{} {OPERATOR_RESET};", OsStr::from_bytes(key).display()),
         }
     }
 }

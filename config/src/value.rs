@@ -1,8 +1,8 @@
-use crate::{Config, ReplayEntry, Replayable};
+use crate::{Config, ReplayOperation, Replayable};
 
 pub struct ConfigValue<T: Replayable> {
     key: &'static str,
-    replay: Vec<ReplayEntry<T>>,
+    replay: Vec<ReplayOperation<T>>,
     default: Option<T::Repr>,
     config: Option<T::Repr>,
     is_default: bool,
@@ -39,17 +39,9 @@ where
     T: Replayable,
     T::Repr: PartialEq,
 {
-    fn replay(&mut self, other: &Self) {
-        other
-            .replay
-            .iter()
-            .cloned()
-            .for_each(|event| self.apply(event));
-    }
-
     fn assign(&mut self, value: <T as Replayable>::Repr) {
         self.replay.clear();
-        self.replay.push(ReplayEntry::Assign(value.clone()));
+        self.replay.push(ReplayOperation::Assign(value.clone()));
         self.config = Some(value);
         self.is_default = false;
     }
@@ -57,16 +49,16 @@ where
     fn assign_if_undefined(&mut self, value: T::Repr) {
         if !self.is_defined() {
             self.replay
-                .push(ReplayEntry::AssignIfUndefined(value.clone()));
+                .push(ReplayOperation::AssignIfUndefined(value.clone()));
             self.config = Some(value);
             self.is_default = false;
         } else {
-            self.replay.push(ReplayEntry::AssignIfUndefined(value));
+            self.replay.push(ReplayOperation::AssignIfUndefined(value));
         }
     }
 
     fn add(&mut self, value: T::Repr) {
-        self.replay.push(ReplayEntry::Add(value.clone()));
+        self.replay.push(ReplayOperation::Add(value.clone()));
         self.config = Some(value);
         self.is_default = false;
     }
@@ -75,12 +67,12 @@ where
         if self.config.take_if(|x| x == &value).is_some() {
             self.is_default = false;
         }
-        self.replay.push(ReplayEntry::Remove(value));
+        self.replay.push(ReplayOperation::Remove(value));
     }
 
     fn reset(&mut self) {
         self.replay.clear();
-        self.replay.push(ReplayEntry::Reset);
+        self.replay.push(ReplayOperation::Reset);
         self.config = self.default.clone();
         self.is_default = true;
     }
@@ -91,5 +83,12 @@ where
 
     fn is_defined(&self) -> bool {
         self.config.is_some()
+    }
+
+    fn history<'a>(&'a self) -> impl Iterator<Item = &'a ReplayOperation<T>>
+    where
+        T: 'a,
+    {
+        self.replay.iter()
     }
 }
