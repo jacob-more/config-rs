@@ -1,13 +1,15 @@
 use std::{ffi::OsStr, fmt::from_fn, os::unix::ffi::OsStrExt, sync::LazyLock};
 
 use bytes::Bytes;
-use display_ext::Join;
 use regex::bytes::Regex;
 use thiserror::Error;
 
 use crate::{
-    AstEntry, AstTree, OPERATOR_ADD, OPERATOR_ASSIGN, OPERATOR_ASSIGN_IF_UNDEFINED,
-    OPERATOR_REMOVE, OPERATOR_RESET,
+    ast::{
+        AstEntry, AstTree, OPERATOR_ADD, OPERATOR_ASSIGN, OPERATOR_ASSIGN_IF_UNDEFINED,
+        OPERATOR_REMOVE, OPERATOR_RESET,
+    },
+    ext::Join,
 };
 
 const CAPTURE_GB_GROUP: &str = "grp";
@@ -333,7 +335,7 @@ where
 mod test {
     use rstest::rstest;
 
-    use crate::{AstEntry, AstTree, parser::AstParser};
+    use crate::ast::{AstEntry, AstParser, AstTree};
 
     #[rstest]
     #[case(b"")]
@@ -455,6 +457,8 @@ mod test {
         ])
     )]
     fn parse_key_op_value(#[case] input: &[u8], #[case] output: AstTree) {
+        use crate::ast::parser::AstParser;
+
         let ast = AstParser::new().parse_bytes(input.to_vec()).to_tree();
         assert!(ast.is_ok(), "error converting input to tree: {ast:?}");
         assert_eq!(ast.unwrap(), output);
@@ -503,7 +507,7 @@ mod property_test {
     use proptest::prelude::*;
     use proptest_derive::Arbitrary;
 
-    use crate::{
+    use crate::ast::{
         AstEntry, AstTree,
         parser::{
             AstParser, EscapeBytes, OPERATOR_BYTES_ADD, OPERATOR_BYTES_ASSIGN,

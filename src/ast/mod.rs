@@ -1,12 +1,11 @@
 use std::{ffi::OsStr, fmt::Display, os::unix::ffi::OsStrExt};
 
 use bytes::Bytes;
-use display_ext::Join;
 use thiserror::Error;
 
-use crate::parser::AstParser;
+use crate::{ast::parser::AstParser, ext::Join};
 
-pub mod parser;
+mod parser;
 
 pub const OPERATOR_ASSIGN: &str = "=";
 pub const OPERATOR_ASSIGN_IF_UNDEFINED: &str = ":=";

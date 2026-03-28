@@ -8,8 +8,10 @@ use std::{
 };
 
 use bytes::Bytes;
-use config_ast::AstOperation;
 use thiserror::Error;
+
+pub mod ast;
+pub(crate) mod ext;
 
 pub(crate) mod header;
 pub(crate) mod history;
@@ -23,6 +25,8 @@ pub use access_control_list::*;
 pub use list::*;
 pub use set::*;
 pub use value::*;
+
+use crate::ast::AstOperation;
 
 #[derive(Debug, Error)]
 enum ReprConfigParseError {
