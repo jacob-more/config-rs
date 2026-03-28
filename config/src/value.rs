@@ -1,11 +1,9 @@
-use crate::{Config, ReplayOperation, Replayable, history::History};
+use crate::{Config, ReplayOperation, Replayable, header::ConfigHeader};
 
 pub struct ConfigValue<T: Replayable> {
-    key: &'static str,
-    history: History<T>,
+    header: ConfigHeader<T>,
     default: Option<T::Repr>,
-    config: Option<T::Repr>,
-    is_default: bool,
+    value: Option<T::Repr>,
 }
 
 impl<T> ConfigValue<T>
@@ -15,20 +13,18 @@ where
     pub fn new(key: &'static str, default: Option<T>) -> Self {
         let default = default.map(|x| x.unparse_value());
         Self {
-            key,
-            history: History::new(),
-            config: default.clone(),
+            header: ConfigHeader::new(key),
+            value: default.clone(),
             default,
-            is_default: true,
         }
     }
 
     pub const fn key(&self) -> &'static str {
-        self.key
+        self.header.key()
     }
 
     pub fn value(&self) -> Option<&T> {
-        self.config
+        self.value
             .as_ref()
             .map(|x| <T as Replayable>::parse_value(x))
     }
@@ -40,50 +36,50 @@ where
     T::Repr: PartialEq,
 {
     fn assign(&mut self, value: <T as Replayable>::Repr) {
-        self.history.assign(value.clone());
-        self.config = Some(value);
-        self.is_default = false;
+        self.header.history_mut().assign(value.clone());
+        self.header.set_modified();
+        self.value = Some(value);
     }
 
     fn assign_if_undefined(&mut self, value: T::Repr) {
         if !self.is_defined() {
-            self.config = Some(value.clone());
-            self.is_default = false;
+            self.header.set_modified();
+            self.value = Some(value.clone());
         }
-        self.history.assign_if_undefined(value);
+        self.header.history_mut().assign_if_undefined(value);
     }
 
     fn add(&mut self, value: T::Repr) {
-        self.history.add(value.clone());
-        self.config = Some(value);
-        self.is_default = false;
+        self.header.history_mut().add(value.clone());
+        self.header.set_modified();
+        self.value = Some(value);
     }
 
     fn remove(&mut self, value: T::Repr) {
-        if self.config.take_if(|x| x == &value).is_some() {
-            self.is_default = false;
+        if self.value.take_if(|x| x == &value).is_some() {
+            self.header.set_modified();
         }
-        self.history.remove(value.clone());
+        self.header.history_mut().remove(value.clone());
     }
 
     fn reset(&mut self) {
-        self.history.reset();
-        self.config = self.default.clone();
-        self.is_default = true;
+        self.header.history_mut().reset();
+        self.header.set_default();
+        self.value = self.default.clone();
     }
 
     fn is_default(&self) -> bool {
-        self.is_default
+        self.header.is_default()
     }
 
     fn is_defined(&self) -> bool {
-        self.config.is_some()
+        self.value.is_some()
     }
 
     fn history<'a>(&'a self) -> impl Iterator<Item = &'a ReplayOperation<T>>
     where
         T: 'a,
     {
-        self.history.history()
+        self.header.history().history()
     }
 }

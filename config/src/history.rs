@@ -9,7 +9,7 @@ impl<T> History<T>
 where
     T: Replayable,
 {
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             history: Vec::new(),
         }

@@ -11,6 +11,7 @@ use bytes::Bytes;
 use config_ast::AstOperation;
 use thiserror::Error;
 
+pub(crate) mod header;
 pub(crate) mod history;
 
 mod access_control_list;
