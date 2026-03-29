@@ -11,7 +11,7 @@ use bytes::Bytes;
 use thiserror::Error;
 
 pub mod ast;
-pub(crate) mod ext;
+pub mod ext;
 
 pub(crate) mod header;
 pub(crate) mod history;

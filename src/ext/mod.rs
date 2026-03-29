@@ -1,11 +1,19 @@
 use std::fmt::Display;
 
 pub trait IterJoin<I> {
-    fn join<S>(self, separator: S) -> Join<I, S> where Self: Sized;
+    fn join<S>(self, separator: S) -> Join<I, S>
+    where
+        Self: Sized;
 }
 
-impl<I> IterJoin<I::IntoIter> for I where I: IntoIterator {
-    fn join<S>(self, separator: S) -> Join<I::IntoIter, S> where Self: Sized {
+impl<I> IterJoin<I::IntoIter> for I
+where
+    I: IntoIterator,
+{
+    fn join<S>(self, separator: S) -> Join<I::IntoIter, S>
+    where
+        Self: Sized,
+    {
         Join::new(self.into_iter(), separator)
     }
 }
@@ -69,7 +77,10 @@ mod test {
     #[case(Join::new(std::iter::empty::<&str>(), 9_isize), "")]
     #[case(Join::new(std::iter::empty::<&str>(), 3.14_f32), "")]
     #[case(Join::new(std::iter::empty::<&str>(), 3.14_f64), "")]
-    fn empty_iter_to_string<T>(#[case] input: T, #[case] output: &str) where T: Display {
+    fn empty_iter_to_string<T>(#[case] input: T, #[case] output: &str)
+    where
+        T: Display,
+    {
         assert_eq!(&input.to_string(), output);
     }
 
@@ -80,7 +91,10 @@ mod test {
     #[case(Join::new(std::iter::once(true), "A"), "true")]
     #[case(Join::new(std::iter::once(9_u64), "A"), "9")]
     #[case(Join::new(std::iter::once(3.14_f32), 'A'), "3.14")]
-    fn once_iter_to_string<T>(#[case] input: T, #[case] output: &str) where T: Display {
+    fn once_iter_to_string<T>(#[case] input: T, #[case] output: &str)
+    where
+        T: Display,
+    {
         assert_eq!(&input.to_string(), output);
     }
 
@@ -91,14 +105,20 @@ mod test {
     #[case(Join::new(["hello", "world"].iter(), " foo bar "), "hello foo bar world")]
     #[case(Join::new(["hello", "world"].iter(), " foo bar "), "hello foo bar world")]
     #[case(Join::new([3.14_f32, 2.7_f32].iter(), 'A'), "3.14A2.7")]
-    fn twice_iter_to_string<T>(#[case] input: T, #[case] output: &str) where T: Display {
+    fn twice_iter_to_string<T>(#[case] input: T, #[case] output: &str)
+    where
+        T: Display,
+    {
         assert_eq!(&input.to_string(), output);
     }
 
     #[rstest]
     #[case(Join::new(["hello", "again", "world"].iter(), '-'), "hello-again-world")]
     #[case(Join::new([0, 1, 2].iter(), true), "0true1true2")]
-    fn thrice_iter_to_string<T>(#[case] input: T, #[case] output: &str) where T: Display {
+    fn thrice_iter_to_string<T>(#[case] input: T, #[case] output: &str)
+    where
+        T: Display,
+    {
         assert_eq!(&input.to_string(), output);
     }
 
@@ -108,7 +128,10 @@ mod test {
     #[case(["foo", "bar"].join(" bas "), "foo bas bar")]
     #[case(["hello", "again", "world"].join('-'), "hello-again-world")]
     #[case([0, 1, 2].join(true), "0true1true2")]
-    fn iter_join<T>(#[case] input: T, #[case] output: &str) where T: Display {
+    fn iter_join<T>(#[case] input: T, #[case] output: &str)
+    where
+        T: Display,
+    {
         assert_eq!(&input.to_string(), output);
     }
 }

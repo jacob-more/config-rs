@@ -73,16 +73,12 @@ impl AstParser {
                         regex::escape(OPERATOR_ASSIGN_IF_UNDEFINED),
                         regex::escape(OPERATOR_ADD),
                         regex::escape(OPERATOR_REMOVE),
-                    ].join('|'),
+                    ]
+                    .join('|'),
                 )
             });
-            let kvp_reset_operators = from_fn(|f| {
-                write!(
-                    f,
-                    r"(?:{})",
-                    [regex::escape(OPERATOR_RESET)].join('|'),
-                )
-            });
+            let kvp_reset_operators =
+                from_fn(|f| write!(f, r"(?:{})", [regex::escape(OPERATOR_RESET)].join('|'),));
             const TYPE_QUOTED_STRING: &str = r#"(?:[^"\\]|\\.)*"#;
             const TYPE_UNQUOTED_STRING: &str = r"(?:[A-Za-z0-9_./\-]+)";
             const WHITESPACE: &str = r"(?:\s|\r\n|\n)";
