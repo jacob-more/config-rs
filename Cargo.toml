@@ -10,8 +10,12 @@ name = "config"
 name = "display_join"
 harness = false
 
+[[bench]]
+name = "parse_to_ast"
+harness = false
+
 [dependencies]
-anstream = "0.6"
+anstream = "1.0"
 bytes = "1.11"
 clap = { version = "4.6", features = ["color", "derive", "error-context", "help", "std", "suggestions", "usage", "cargo", "wrap_help", "unicode"]}
 owo-colors = "4.3"
@@ -21,10 +25,22 @@ thiserror = "2.0"
 [dev-dependencies]
 criterion = "0.8"
 itertools = "0.14"
-proptest = "1.10"
+proptest = "1.11"
 proptest-derive = "0.8"
 rand = "0.10"
 rstest = "0.26"
+
+# Performance can be improved for release mode and benchmarks by enabling
+# link-time optimizations to optimize across crate boundaries and reducing the
+# number of codegen units to 1 (reduces parallelism in the compiler).
+
+[profile.release]
+lto = true
+codegen-units = 1
+
+[profile.bench]
+lto = true
+codegen-units = 1
 
 [profile.test.package.proptest]
 opt-level = 3

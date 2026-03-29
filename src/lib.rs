@@ -281,3 +281,34 @@ where
     T: Replayable,
 {
 }
+
+
+#[cfg(test)]
+mod test {
+    use std::{path::PathBuf, sync::LazyLock};
+
+    use rstest::rstest;
+
+    static EXAMPLES_DIRECTORY: LazyLock<PathBuf> = LazyLock::new(|| {
+        let mut examples_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        examples_path.push("benches");
+        examples_path.push("examples");
+        examples_path
+    });
+
+    #[rstest]
+    #[case("cargo.lock.conf")]
+    #[case("root_hints.conf")]
+    fn test_parse_to_ast(#[case] file_name: &str) {
+        use std::fs::read_to_string;
+
+        use bytes::Bytes;
+
+        let mut config_path = EXAMPLES_DIRECTORY.clone();
+        config_path.push("config_name");
+
+        let file_data = Bytes::from(read_to_string(config_path.with_file_name(file_name)).unwrap().into_bytes());
+        let ast = crate::ast::AstTree::parse_bytes(file_data);
+        assert!(ast.is_ok(), "AST is not Ok: {ast:?}");
+    }
+}

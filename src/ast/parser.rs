@@ -63,7 +63,7 @@ impl Default for AstParser {
 impl AstParser {
     pub fn new() -> Self {
         static PARSE_PATERN: LazyLock<Regex> = LazyLock::new(|| {
-            const IDENTIFIER: &str = r"(?:[A-Za-z0-9_]+)";
+            const IDENTIFIER: &str = r"(?:[A-Za-z0-9_.]+|[A-Za-z0-9_.][A-Za-z0-9_./\-:]*[A-Za-z0-9_.])";
             let kvp_assign_operators = from_fn(|f| {
                 write!(
                     f,
@@ -80,7 +80,7 @@ impl AstParser {
             let kvp_reset_operators =
                 from_fn(|f| write!(f, r"(?:{})", [regex::escape(OPERATOR_RESET)].join('|'),));
             const TYPE_QUOTED_STRING: &str = r#"(?:[^"\\]|\\.)*"#;
-            const TYPE_UNQUOTED_STRING: &str = r"(?:[A-Za-z0-9_./\-]+)";
+            const TYPE_UNQUOTED_STRING: &str = r"(?:[A-Za-z0-9_./\-:]+)";
             const WHITESPACE: &str = r"(?:\s|\r\n|\n)";
             let catpure_group_open = from_fn(|f| {
                 write!(f, r"(?<{CAPTURE_GB_GROUP}>{IDENTIFIER})")?;
@@ -139,7 +139,7 @@ impl AstParser {
 fn count_lines(bytes: &[u8]) -> usize {
     // Using a regex here is just to make sure unicode is handled correctly.
     static LINE_END: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?s-u:\n)").unwrap());
-    LINE_END.find_iter(bytes).count()
+    LINE_END.find_iter(bytes).count() + 1
 }
 
 impl AstParser {
@@ -576,7 +576,7 @@ mod property_test {
 
     #[derive(Debug, Arbitrary, Clone, PartialEq, Eq, Hash)]
     struct PropIdentifier {
-        #[proptest(regex = r"[A-Za-z0-9_]+")]
+        #[proptest(regex = r"[A-Za-z0-9_.]+|[A-Za-z0-9_.][A-Za-z0-9_./\-:]*[A-Za-z0-9_.]")]
         val: Vec<u8>,
     }
     impl AsBytes for PropIdentifier {

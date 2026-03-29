@@ -52,7 +52,7 @@ impl AstTree {
         self.entries.into_iter()
     }
 
-    pub fn parse_reader<R>(self, reader: R) -> std::io::Result<Result<Self, AstParseError>>
+    pub fn parse_reader<R>(reader: R) -> std::io::Result<Result<Self, AstParseError>>
     where
         R: std::io::Read,
     {
@@ -62,7 +62,7 @@ impl AstTree {
             .map_err(|e| e.into()))
     }
 
-    pub fn parse_bytes<B>(self, bytes: B) -> Result<Self, AstParseError>
+    pub fn parse_bytes<B>(bytes: B) -> Result<Self, AstParseError>
     where
         Bytes: From<B>,
     {
