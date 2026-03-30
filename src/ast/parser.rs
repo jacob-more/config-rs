@@ -12,11 +12,11 @@ use crate::{
     ext::IterJoin,
 };
 
-const CAPTURE_GB_GROUP: &str = "grp";
+const CAPTURE_KEY: &str = "key";
+
 const CAPTURE_GB_BODY_OPEN: &str = "gbo";
 const CAPTURE_GB_BODY_CLOSE: &str = "gbc";
 
-const CAPTURE_KVP_KEY: &str = "key";
 const CAPTURE_KVP_ASSIGN_OPERATOR: &str = "aop";
 const CAPTURE_KVP_RESET_OPERATOR: &str = "rop";
 const CAPTURE_KVP_VALUE_QUOTED: &str = "qval";
@@ -64,9 +64,12 @@ impl Default for AstParser {
 impl AstParser {
     pub fn new() -> Self {
         static PARSE_PATERN: LazyLock<Regex> = LazyLock::new(|| {
-            const IDENTIFIER: &str =
+            const TYPE_IDENTIFIER: &str =
                 r"(?:[A-Za-z0-9_.]+|[A-Za-z0-9_.][A-Za-z0-9_./\-:]*[A-Za-z0-9_.])";
-            let kvp_assign_operators = from_fn(|f| {
+            const TYPE_QUOTED_STRING: &str = r#"(?:[^"\\]|\\.)*"#;
+            const TYPE_UNQUOTED_STRING: &str = r"(?:[A-Za-z0-9_./\-:]+)";
+            const WHITESPACE: &str = r"(?:\s|\r\n|\n)";
+            let assign_operators = from_fn(|f| {
                 write!(
                     f,
                     r"(?:{})",
@@ -79,33 +82,20 @@ impl AstParser {
                     .join('|'),
                 )
             });
-            let kvp_reset_operators = from_fn(|f| {
+            let reset_operators = from_fn(|f| {
                 write!(
                     f,
                     r"(?:{})",
                     [regex::escape(OPERATOR_CLEAR), regex::escape(OPERATOR_RESET)].join('|'),
                 )
             });
-            const TYPE_QUOTED_STRING: &str = r#"(?:[^"\\]|\\.)*"#;
-            const TYPE_UNQUOTED_STRING: &str = r"(?:[A-Za-z0-9_./\-:]+)";
-            const WHITESPACE: &str = r"(?:\s|\r\n|\n)";
-            let catpure_group_open = from_fn(|f| {
-                write!(f, r"(?<{CAPTURE_GB_GROUP}>{IDENTIFIER})")?;
+            let capture_group_open =
+                from_fn(|f| write!(f, r"(?<{CAPTURE_GB_BODY_OPEN}>:{WHITESPACE}*\{{)"));
+            let capture_group_close = from_fn(|f| write!(f, r"(?<{CAPTURE_GB_BODY_CLOSE}>\}})"));
+            let capture_assignment_op_value = from_fn(|f| {
+                write!(f, r"(?<{CAPTURE_KVP_ASSIGN_OPERATOR}>{assign_operators})")?;
                 write!(f, r"{WHITESPACE}*")?;
-                write!(f, r":")?;
-                write!(f, r"{WHITESPACE}*")?;
-                write!(f, r"(?<{CAPTURE_GB_BODY_OPEN}>\{{)")
-            });
-            let catpure_group_close = from_fn(|f| write!(f, r"(?<{CAPTURE_GB_BODY_CLOSE}>\}})"));
-            let capture_key_value_pair = from_fn(|f| {
-                write!(f, r"(?<{CAPTURE_KVP_KEY}>{IDENTIFIER})")?;
-                write!(f, r"{WHITESPACE}*")?;
-                write!(f, r"(?:")?;
-                write!(
-                    f,
-                    r"(?<{CAPTURE_KVP_ASSIGN_OPERATOR}>{kvp_assign_operators})"
-                )?;
-                write!(f, r"{WHITESPACE}*")?;
+
                 write!(f, r"(?:")?;
                 write!(
                     f,
@@ -116,19 +106,25 @@ impl AstParser {
                     f,
                     r"(?<{CAPTURE_KVP_VALUE_UNQUOTED}>{TYPE_UNQUOTED_STRING})"
                 )?;
-                write!(f, r")")?;
-                write!(f, r"|")?;
-                write!(f, r"(?<{CAPTURE_KVP_RESET_OPERATOR}>{kvp_reset_operators})")?;
                 write!(f, r")")
+            });
+            let capture_reset_op =
+                from_fn(|f| write!(f, r"(?<{CAPTURE_KVP_RESET_OPERATOR}>{reset_operators})"));
+            let capture_key_operator_value = from_fn(|f| {
+                write!(f, r"(?<{CAPTURE_KEY}>{TYPE_IDENTIFIER})")?;
+                write!(f, r"{WHITESPACE}*")?;
+                write!(
+                    f,
+                    r"(?:{capture_group_open}|{capture_assignment_op_value}|{capture_reset_op})"
+                )
             });
             let capture_whitespace =
                 from_fn(|f| write!(f, "(?<{CAPTURE_WHITESPACE}>{WHITESPACE}+)"));
             let parse_pattern = from_fn(|f| {
                 write!(f, r"{WHITESPACE}*")?;
                 write!(f, r"(?:")?;
-                write!(f, r"{capture_key_value_pair}")?;
-                write!(f, r"|{catpure_group_open}")?;
-                write!(f, r"|{catpure_group_close}")?;
+                write!(f, r"{capture_key_operator_value}")?;
+                write!(f, r"|{capture_group_close}")?;
                 write!(f, r"|{capture_whitespace}")?;
                 write!(f, r")")?;
                 // A semi-colon can be used as an optional terminator.
@@ -203,13 +199,15 @@ impl AstParse {
             );
             next_start = matched.end();
 
-            if let Some(key) = captured.name(CAPTURE_KVP_KEY) {
-                let key = self.buffer.slice_ref(key.as_bytes());
-                let entry = if let Some(op) = captured.name(CAPTURE_KVP_ASSIGN_OPERATOR) {
-                    let mut value = if let Some(value) = captured.name(CAPTURE_KVP_VALUE_QUOTED) {
-                        self.buffer.slice_ref(value.as_bytes())
-                    } else if let Some(value) = captured.name(CAPTURE_KVP_VALUE_UNQUOTED) {
-                        self.buffer.slice_ref(value.as_bytes())
+            if let Some(matched_key) = captured.name(CAPTURE_KEY) {
+                let key = self.buffer.slice_ref(matched_key.as_bytes());
+                let entry = if let Some(matched_op) = captured.name(CAPTURE_KVP_ASSIGN_OPERATOR) {
+                    let mut value = if let Some(matched_value) =
+                        captured.name(CAPTURE_KVP_VALUE_QUOTED)
+                    {
+                        self.buffer.slice_ref(matched_value.as_bytes())
+                    } else if let Some(matched_value) = captured.name(CAPTURE_KVP_VALUE_UNQUOTED) {
+                        self.buffer.slice_ref(matched_value.as_bytes())
                     } else {
                         Bytes::new()
                     };
@@ -219,7 +217,7 @@ impl AstParse {
                     if value.contains(&b'\\') {
                         value = Bytes::from_iter(EscapeBytes::new(value.into_iter()))
                     }
-                    match op.as_bytes() {
+                    match matched_op.as_bytes() {
                         OPERATOR_BYTES_ASSIGN => AstEntry::new_assign(key, value),
                         OPERATOR_BYTES_ASSIGN_IF_UNDEFINED => {
                             AstEntry::new_assign_if_undefined(key, value)
@@ -228,21 +226,29 @@ impl AstParse {
                         OPERATOR_BYTES_REMOVE => AstEntry::new_remove(key, value),
                         _ => panic!(
                             "operator should not match assign operators: {}",
-                            OsStr::from_bytes(op.as_bytes()).display()
+                            OsStr::from_bytes(matched_op.as_bytes()).display()
                         ),
                     }
-                } else {
-                    let op = captured
-                        .name(CAPTURE_KVP_RESET_OPERATOR)
-                        .expect("an operation must be present if key-op-value key is found");
-                    match op.as_bytes() {
+                } else if let Some(matched_op) = captured.name(CAPTURE_KVP_RESET_OPERATOR) {
+                    match matched_op.as_bytes() {
                         OPERATOR_BYTES_CLEAR => AstEntry::new_clear(key),
                         OPERATOR_BYTES_RESET => AstEntry::new_reset(key),
                         _ => panic!(
                             "operator should not match reset operators: {}",
-                            OsStr::from_bytes(op.as_bytes()).display()
+                            OsStr::from_bytes(matched_op.as_bytes()).display()
                         ),
                     }
+                } else if captured.name(CAPTURE_GB_BODY_OPEN).is_some() {
+                    stack.push(AstGroup {
+                        span_start: matched_key.start(),
+                        name: key,
+                        entries: Vec::new(),
+                    });
+                    continue;
+                } else {
+                    panic!(
+                        "key was found. Must match one of the operator options: assign ops, reset ops, or group open"
+                    )
                 };
                 stack
                     .last_mut()
@@ -252,19 +258,7 @@ impl AstParse {
                 continue;
             }
 
-            if let Some(key) = captured.name(CAPTURE_GB_GROUP) {
-                let _ = captured
-                    .name(CAPTURE_GB_BODY_OPEN)
-                    .expect("body-open must be present if group key is found");
-                stack.push(AstGroup {
-                    span_start: key.start(),
-                    name: self.buffer.slice_ref(key.as_bytes()),
-                    entries: Vec::new(),
-                });
-                continue;
-            }
-
-            if let Some(body_close) = captured.name(CAPTURE_GB_BODY_CLOSE) {
+            if let Some(matched_body_close) = captured.name(CAPTURE_GB_BODY_CLOSE) {
                 let closed_group = stack.pop().expect("stack initialized with one element");
                 match stack.last_mut() {
                     Some(append_to_group) => {
@@ -275,8 +269,8 @@ impl AstParse {
                     }
                     None => {
                         return Err(AstParseError::UnmatchedGroupClose {
-                            line: count_lines(&self.buffer[..body_close.end()]),
-                            group_close: self.buffer.slice_ref(body_close.as_bytes()),
+                            line: count_lines(&self.buffer[..matched_body_close.end()]),
+                            group_close: self.buffer.slice_ref(matched_body_close.as_bytes()),
                         });
                     }
                 }
