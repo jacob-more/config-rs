@@ -211,6 +211,7 @@ pub enum ReplayOperation<T: Replayable> {
     Add(T::Repr),
     Remove(T::Repr),
     Reset,
+    Clear,
 }
 impl<T> Clone for ReplayOperation<T>
 where
@@ -223,6 +224,7 @@ where
             Self::Add(value) => Self::Add(value.clone()),
             Self::Remove(value) => Self::Remove(value.clone()),
             Self::Reset => Self::Reset,
+            Self::Clear => Self::Clear,
         }
     }
 }
@@ -236,6 +238,7 @@ where
     fn add(&mut self, value: T::Repr);
     fn remove(&mut self, value: T::Repr);
     fn reset(&mut self);
+    fn clear(&mut self);
 
     fn is_default(&self) -> bool;
     fn is_defined(&self) -> bool;
@@ -257,6 +260,7 @@ where
             AstOperation::Add(value) => self.add(T::pre_parse_value(value)?),
             AstOperation::Remove(value) => self.remove(T::pre_parse_value(value)?),
             AstOperation::Reset => self.reset(),
+            AstOperation::Clear => self.clear(),
         }
         Ok(())
     }
@@ -268,6 +272,7 @@ where
             ReplayOperation::Add(value) => self.add(value),
             ReplayOperation::Remove(value) => self.remove(value),
             ReplayOperation::Reset => self.reset(),
+            ReplayOperation::Clear => self.clear(),
         }
     }
 
@@ -281,7 +286,6 @@ where
     T: Replayable,
 {
 }
-
 
 #[cfg(test)]
 mod test {
@@ -307,7 +311,11 @@ mod test {
         let mut config_path = EXAMPLES_DIRECTORY.clone();
         config_path.push("config_name");
 
-        let file_data = Bytes::from(read_to_string(config_path.with_file_name(file_name)).unwrap().into_bytes());
+        let file_data = Bytes::from(
+            read_to_string(config_path.with_file_name(file_name))
+                .unwrap()
+                .into_bytes(),
+        );
         let ast = crate::ast::AstTree::parse_bytes(file_data);
         assert!(ast.is_ok(), "AST is not Ok: {ast:?}");
     }

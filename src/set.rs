@@ -79,6 +79,12 @@ where
         self.set.extend(self.default.iter().cloned());
     }
 
+    fn clear(&mut self) {
+        self.header.history_mut().clear();
+        self.header.set_modified();
+        self.set.clear();
+    }
+
     fn is_default(&self) -> bool {
         self.header.is_default()
     }

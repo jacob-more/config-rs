@@ -7,7 +7,7 @@ use thiserror::Error;
 use crate::{
     ast::{
         AstEntry, AstTree, OPERATOR_ADD, OPERATOR_ASSIGN, OPERATOR_ASSIGN_IF_UNDEFINED,
-        OPERATOR_REMOVE, OPERATOR_RESET,
+        OPERATOR_CLEAR, OPERATOR_REMOVE, OPERATOR_RESET,
     },
     ext::IterJoin,
 };
@@ -29,6 +29,7 @@ const OPERATOR_BYTES_ASSIGN_IF_UNDEFINED: &[u8] = OPERATOR_ASSIGN_IF_UNDEFINED.a
 const OPERATOR_BYTES_ADD: &[u8] = OPERATOR_ADD.as_bytes();
 const OPERATOR_BYTES_REMOVE: &[u8] = OPERATOR_REMOVE.as_bytes();
 const OPERATOR_BYTES_RESET: &[u8] = OPERATOR_RESET.as_bytes();
+const OPERATOR_BYTES_CLEAR: &[u8] = OPERATOR_CLEAR.as_bytes();
 
 #[derive(Debug, Clone)]
 pub struct AstParser {
@@ -63,7 +64,8 @@ impl Default for AstParser {
 impl AstParser {
     pub fn new() -> Self {
         static PARSE_PATERN: LazyLock<Regex> = LazyLock::new(|| {
-            const IDENTIFIER: &str = r"(?:[A-Za-z0-9_.]+|[A-Za-z0-9_.][A-Za-z0-9_./\-:]*[A-Za-z0-9_.])";
+            const IDENTIFIER: &str =
+                r"(?:[A-Za-z0-9_.]+|[A-Za-z0-9_.][A-Za-z0-9_./\-:]*[A-Za-z0-9_.])";
             let kvp_assign_operators = from_fn(|f| {
                 write!(
                     f,
@@ -77,8 +79,13 @@ impl AstParser {
                     .join('|'),
                 )
             });
-            let kvp_reset_operators =
-                from_fn(|f| write!(f, r"(?:{})", [regex::escape(OPERATOR_RESET)].join('|'),));
+            let kvp_reset_operators = from_fn(|f| {
+                write!(
+                    f,
+                    r"(?:{})",
+                    [regex::escape(OPERATOR_CLEAR), regex::escape(OPERATOR_RESET)].join('|'),
+                )
+            });
             const TYPE_QUOTED_STRING: &str = r#"(?:[^"\\]|\\.)*"#;
             const TYPE_UNQUOTED_STRING: &str = r"(?:[A-Za-z0-9_./\-:]+)";
             const WHITESPACE: &str = r"(?:\s|\r\n|\n)";
@@ -229,6 +236,7 @@ impl AstParse {
                         .name(CAPTURE_KVP_RESET_OPERATOR)
                         .expect("an operation must be present if key-op-value key is found");
                     match op.as_bytes() {
+                        OPERATOR_BYTES_CLEAR => AstEntry::new_clear(key),
                         OPERATOR_BYTES_RESET => AstEntry::new_reset(key),
                         _ => panic!(
                             "operator should not match reset operators: {}",
@@ -450,6 +458,40 @@ mod test {
             AstEntry::new_remove(b"NEXT".to_vec(), b"VALUE".to_vec()),
         ])
     )]
+    #[case(
+        b"KEY!!",
+        AstTree::from_iter(vec![
+            AstEntry::new_clear(b"KEY".to_vec())
+        ])
+    )]
+    #[case(
+        b"KEY !!",
+        AstTree::from_iter(vec![
+            AstEntry::new_clear(b"KEY".to_vec())
+        ])
+    )]
+    #[case(
+        b"KEY !!",
+        AstTree::from_iter(vec![
+            AstEntry::new_clear(b"KEY".to_vec())
+        ])
+    )]
+    #[case(
+        b"KEY!!
+        KEY=\"QUOTED String @\";
+        ",
+        AstTree::from_iter(vec![
+            AstEntry::new_clear(b"KEY".to_vec()),
+            AstEntry::new_assign(b"KEY".to_vec(), b"QUOTED String @".to_vec()),
+        ])
+    )]
+    #[case(
+        b"KEY!!NEXT-=VALUE",
+        AstTree::from_iter(vec![
+            AstEntry::new_clear(b"KEY".to_vec()),
+            AstEntry::new_remove(b"NEXT".to_vec(), b"VALUE".to_vec()),
+        ])
+    )]
     fn parse_key_op_value(#[case] input: &[u8], #[case] output: AstTree) {
         use crate::ast::parser::AstParser;
 
@@ -509,7 +551,8 @@ mod property_test {
         AstEntry, AstTree,
         parser::{
             AstParser, EscapeBytes, OPERATOR_BYTES_ADD, OPERATOR_BYTES_ASSIGN,
-            OPERATOR_BYTES_ASSIGN_IF_UNDEFINED, OPERATOR_BYTES_REMOVE, OPERATOR_BYTES_RESET,
+            OPERATOR_BYTES_ASSIGN_IF_UNDEFINED, OPERATOR_BYTES_CLEAR, OPERATOR_BYTES_REMOVE,
+            OPERATOR_BYTES_RESET,
         },
     };
 
@@ -598,7 +641,7 @@ mod property_test {
 
     #[derive(Debug, Arbitrary, Clone, PartialEq, Eq, Hash)]
     struct PropResetOp {
-        #[proptest(regex = r"!")]
+        #[proptest(regex = r"!|!!")]
         val: Vec<u8>,
     }
     impl AsBytes for PropResetOp {
@@ -707,9 +750,8 @@ mod property_test {
                 OPERATOR_BYTES_REMOVE => {
                     AstEntry::new_remove(self.identifier.val.clone(), value.collect::<Bytes>())
                 }
-                OPERATOR_BYTES_RESET => AstEntry::new_reset(self.identifier.val.clone()),
                 _ => panic!(
-                    "operator not supported: {}",
+                    "assign operator not supported: {}",
                     OsStr::from_bytes(self.op.val.deref()).display()
                 ),
             }
@@ -743,7 +785,14 @@ mod property_test {
     }
     impl PropKeyReset {
         pub fn as_ast_entry(&self) -> AstEntry {
-            AstEntry::new_reset(self.identifier.val.clone())
+            match self.op.val.deref() {
+                OPERATOR_BYTES_CLEAR => AstEntry::new_clear(self.identifier.val.clone()),
+                OPERATOR_BYTES_RESET => AstEntry::new_reset(self.identifier.val.clone()),
+                _ => panic!(
+                    "reset operator not supported: {}",
+                    OsStr::from_bytes(self.op.val.deref()).display()
+                ),
+            }
         }
     }
     impl AsBytes for PropKeyReset {

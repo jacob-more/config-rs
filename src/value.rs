@@ -68,6 +68,12 @@ where
         self.value = self.default.clone();
     }
 
+    fn clear(&mut self) {
+        self.header.history_mut().clear();
+        self.header.set_modified();
+        self.value = None;
+    }
+
     fn is_default(&self) -> bool {
         self.header.is_default()
     }

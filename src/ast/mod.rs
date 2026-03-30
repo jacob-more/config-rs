@@ -12,6 +12,7 @@ pub const OPERATOR_ASSIGN_IF_UNDEFINED: &str = ":=";
 pub const OPERATOR_ADD: &str = "+=";
 pub const OPERATOR_REMOVE: &str = "-=";
 pub const OPERATOR_RESET: &str = "!";
+pub const OPERATOR_CLEAR: &str = "!!";
 
 #[derive(Debug, Error)]
 #[error(transparent)]
@@ -35,6 +36,7 @@ pub enum AstOperation {
     Add(Bytes),
     Remove(Bytes),
     Reset,
+    Clear,
 }
 
 impl AstTree {
@@ -126,6 +128,13 @@ impl AstEntry {
             operation: AstOperation::Reset,
         }
     }
+
+    pub fn new_clear(key: impl Into<Bytes>) -> Self {
+        Self::Operation {
+            key: key.into(),
+            operation: AstOperation::Clear,
+        }
+    }
 }
 
 impl Display for AstTree {
@@ -180,6 +189,10 @@ impl Display for AstEntry {
                 key,
                 operation: AstOperation::Reset,
             } => write!(f, "{} {OPERATOR_RESET};", OsStr::from_bytes(key).display()),
+            Self::Operation {
+                key,
+                operation: AstOperation::Clear,
+            } => write!(f, "{} {OPERATOR_CLEAR};", OsStr::from_bytes(key).display()),
         }
     }
 }

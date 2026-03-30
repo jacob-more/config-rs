@@ -37,6 +37,11 @@ where
         self.history.push(ReplayOperation::Reset);
     }
 
+    pub fn clear(&mut self) {
+        self.history.clear();
+        self.history.push(ReplayOperation::Clear);
+    }
+
     pub fn history<'a>(&'a self) -> impl Iterator<Item = &'a ReplayOperation<T>>
     where
         T: 'a,
