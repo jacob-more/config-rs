@@ -65,7 +65,7 @@ impl AstParser {
     pub fn new() -> Self {
         static PARSE_PATERN: LazyLock<Regex> = LazyLock::new(|| {
             const TYPE_IDENTIFIER: &str =
-                r"(?:[A-Za-z0-9_.]+|[A-Za-z0-9_.][A-Za-z0-9_./\-:]*[A-Za-z0-9_.])";
+                r"(?:[A-Za-z0-9_./]+|[A-Za-z0-9_./][A-Za-z0-9_./\-:]*[A-Za-z0-9_./])";
             const TYPE_QUOTED_STRING: &str = r#"(?:[^"\\]|\\.)*"#;
             const TYPE_UNQUOTED_STRING: &str = r"(?:[A-Za-z0-9_./\-:]+)";
             const WHITESPACE: &str = r"(?:\s|\r\n|\n)";
@@ -613,7 +613,7 @@ mod property_test {
 
     #[derive(Debug, Arbitrary, Clone, PartialEq, Eq, Hash)]
     struct PropIdentifier {
-        #[proptest(regex = r"[A-Za-z0-9_.]+|[A-Za-z0-9_.][A-Za-z0-9_./\-:]*[A-Za-z0-9_.]")]
+        #[proptest(regex = r"[A-Za-z0-9_./]+|[A-Za-z0-9_./][A-Za-z0-9_./\-:]*[A-Za-z0-9_./]")]
         val: Vec<u8>,
     }
     impl AsBytes for PropIdentifier {
