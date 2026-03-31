@@ -1,20 +1,32 @@
-use crate::{Config, ReplayOperation, Replayable, header::ConfigHeader};
+use crate::{Conf, Config, ReplayOperation, Replayable, header::ConfigHeader};
 
-pub struct ConfigValue<T: Replayable> {
+#[derive(Debug)]
+pub struct ConfigValue<T: ?Sized + Replayable> {
     header: ConfigHeader<T>,
-    default: Option<T::Repr>,
-    value: Option<T::Repr>,
+    default: Conf<T>,
+    value: Option<Conf<T>>,
 }
 
 impl<T> ConfigValue<T>
 where
-    T: Replayable,
+    T: ?Sized + Replayable,
 {
-    pub fn new(key: &'static str, default: Option<T>) -> Self {
-        let default = default.map(|x| x.unparse_value());
+    pub fn new(key: &'static str) -> Self
+    where
+        T: Default,
+    {
         Self {
             header: ConfigHeader::new(key),
-            value: default.clone(),
+            value: None,
+            default: Conf::from(&T::default()),
+        }
+    }
+
+    pub fn new_with_default(key: &'static str, default: &T) -> Self {
+        let default = Conf::from(default);
+        Self {
+            header: ConfigHeader::new(key),
+            value: None,
             default,
         }
     }
@@ -23,28 +35,25 @@ where
         self.header.key()
     }
 
-    pub fn value(&self) -> Option<&T> {
-        self.value
-            .as_ref()
-            .map(|x| <T as Replayable>::parse_value(x))
+    pub fn value(&self) -> &Conf<T> {
+        self.value.as_ref().unwrap_or(&self.default)
     }
 }
 
 impl<T> Config<T> for ConfigValue<T>
 where
-    T: Replayable,
-    T::Repr: PartialEq,
+    T: ?Sized + Replayable + PartialEq,
 {
-    fn assign(&mut self, value: <T as Replayable>::Repr) {
+    fn assign(&mut self, value: T::Repr) {
         self.header.history_mut().assign(value.clone());
         self.header.set_modified();
-        self.value = Some(value);
+        self.value = Some(Conf(value));
     }
 
     fn assign_if_undefined(&mut self, value: T::Repr) {
         if !self.is_defined() {
             self.header.set_modified();
-            self.value = Some(value.clone());
+            self.value = Some(Conf(value.clone()));
         }
         self.header.history_mut().assign_if_undefined(value);
     }
@@ -52,25 +61,27 @@ where
     fn add(&mut self, value: T::Repr) {
         self.header.history_mut().add(value.clone());
         self.header.set_modified();
-        self.value = Some(value);
+        self.value = Some(Conf(value));
     }
 
     fn remove(&mut self, value: T::Repr) {
-        if self.value.take_if(|x| x == &value).is_some() {
-            self.header.set_modified();
+        let conf = Conf(value);
+        if self.value.as_ref().is_some_and(|x| x == &conf) {
+            self.value = None;
+            self.header.set_default();
         }
-        self.header.history_mut().remove(value.clone());
+        self.header.history_mut().remove(conf.0);
     }
 
     fn reset(&mut self) {
         self.header.history_mut().reset();
         self.header.set_default();
-        self.value = self.default.clone();
+        self.value = None;
     }
 
     fn clear(&mut self) {
         self.header.history_mut().clear();
-        self.header.set_modified();
+        self.header.set_default();
         self.value = None;
     }
 
@@ -87,5 +98,18 @@ where
         T: 'a,
     {
         self.header.history().history()
+    }
+}
+
+impl<T> Clone for ConfigValue<T>
+where
+    T: ?Sized + Replayable,
+{
+    fn clone(&self) -> Self {
+        Self {
+            header: self.header.clone(),
+            default: self.default.clone(),
+            value: self.value.clone(),
+        }
     }
 }

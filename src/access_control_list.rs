@@ -1,4 +1,4 @@
-use crate::{Config, ReplayOperation, Replayable, header::ConfigHeader};
+use crate::{Conf, Config, ReplayOperation, Replayable, header::ConfigHeader};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum AclAction {
@@ -6,20 +6,29 @@ pub enum AclAction {
     Deny,
 }
 
-pub struct ConfigAcl<T: Replayable> {
+#[derive(Debug)]
+pub struct ConfigAcl<T: ?Sized + Replayable> {
     header: ConfigHeader<T>,
-    default: Vec<(AclAction, T::Repr)>,
-    acl: Vec<(AclAction, T::Repr)>,
+    default: Vec<(AclAction, Conf<T>)>,
+    acl: Vec<(AclAction, Conf<T>)>,
 }
 
 impl<T> ConfigAcl<T>
 where
-    T: Replayable,
+    T: ?Sized + Replayable,
 {
-    pub fn new(key: &'static str, default: &[(AclAction, T)]) -> Self {
+    pub const fn new(key: &'static str) -> Self {
+        Self {
+            header: ConfigHeader::new(key),
+            acl: Vec::new(),
+            default: Vec::new(),
+        }
+    }
+
+    pub fn new_with_default(key: &'static str, default: &[(AclAction, &T)]) -> Self {
         let default: Vec<_> = default
             .iter()
-            .map(|(action, x)| (*action, x.unparse_value()))
+            .map(|(action, x)| (*action, Conf::from(*x)))
             .collect();
         Self {
             header: ConfigHeader::new(key),
@@ -40,35 +49,44 @@ where
         self.acl.is_empty()
     }
 
-    pub fn get(&self, index: usize) -> Option<(&AclAction, &T)> {
-        self.acl
-            .get(index)
-            .map(|(action, x)| (action, <T as Replayable>::parse_value(x)))
+    pub fn get(&self, index: usize) -> Option<(&AclAction, &Conf<T>)> {
+        self.acl.get(index).map(|(action, x)| (action, x))
     }
 
-    pub fn values(&self) -> impl Iterator<Item = (&AclAction, &T)> {
+    pub fn values(&self) -> impl Iterator<Item = (&AclAction, &Conf<T>)> {
+        self.acl.iter().map(|(action, x)| (action, x))
+    }
+
+    pub fn allowed(&self) -> impl Iterator<Item = &Conf<T>> {
         self.acl
             .iter()
-            .map(|(action, x)| (action, <T as Replayable>::parse_value(x)))
+            .filter(|(action, _)| matches!(action, AclAction::Allow))
+            .map(|(_, x)| x)
+    }
+
+    pub fn denied(&self) -> impl Iterator<Item = &Conf<T>> {
+        self.acl
+            .iter()
+            .filter(|(action, _)| matches!(action, AclAction::Deny))
+            .map(|(_, x)| x)
     }
 }
 
 impl<T> Config<T> for ConfigAcl<T>
 where
-    T: Replayable,
-    T::Repr: PartialEq,
+    T: ?Sized + Replayable + PartialEq,
 {
     fn assign(&mut self, value: <T as Replayable>::Repr) {
         self.header.history_mut().assign(value.clone());
         self.header.set_modified();
         self.acl.clear();
-        self.acl.push((AclAction::Allow, value));
+        self.acl.push((AclAction::Allow, Conf(value)));
     }
 
     fn assign_if_undefined(&mut self, value: T::Repr) {
         if !self.is_defined() {
             self.header.set_modified();
-            self.acl.push((AclAction::Allow, value.clone()));
+            self.acl.push((AclAction::Allow, Conf(value.clone())));
         }
         self.header.history_mut().assign_if_undefined(value);
     }
@@ -77,16 +95,18 @@ where
         self.header.history_mut().add(value.clone());
         self.header.set_modified();
         // The new action takes precedence over any exact duplicates.
-        self.acl.retain(|(_, x)| x != &value);
-        self.acl.push((AclAction::Allow, value));
+        let conf = Conf(value);
+        self.acl.retain(|(_, x)| x != &conf);
+        self.acl.push((AclAction::Allow, conf));
     }
 
     fn remove(&mut self, value: T::Repr) {
         self.header.history_mut().remove(value.clone());
         self.header.set_modified();
         // The new action takes precedence over any exact duplicates.
-        self.acl.retain(|(_, x)| x != &value);
-        self.acl.push((AclAction::Deny, value));
+        let conf = Conf(value);
+        self.acl.retain(|(_, x)| x != &conf);
+        self.acl.push((AclAction::Deny, conf));
     }
 
     fn reset(&mut self) {
@@ -115,5 +135,18 @@ where
         T: 'a,
     {
         self.header.history().history()
+    }
+}
+
+impl<T> Clone for ConfigAcl<T>
+where
+    T: ?Sized + Replayable,
+{
+    fn clone(&self) -> Self {
+        Self {
+            header: self.header.clone(),
+            default: self.default.clone(),
+            acl: self.acl.clone(),
+        }
     }
 }

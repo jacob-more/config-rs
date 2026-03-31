@@ -1,13 +1,13 @@
 use crate::{ReplayOperation, Replayable};
 
-#[derive(Debug, Clone)]
-pub struct History<T: Replayable> {
+#[derive(Debug)]
+pub struct History<T: ?Sized + Replayable> {
     history: Vec<ReplayOperation<T>>,
 }
 
 impl<T> History<T>
 where
-    T: Replayable,
+    T: ?Sized + Replayable,
 {
     pub const fn new() -> Self {
         Self {
@@ -15,7 +15,7 @@ where
         }
     }
 
-    pub fn assign(&mut self, value: <T as Replayable>::Repr) {
+    pub fn assign(&mut self, value: T::Repr) {
         self.history.clear();
         self.history.push(ReplayOperation::Assign(value));
     }
@@ -52,9 +52,20 @@ where
 
 impl<T> Default for History<T>
 where
-    T: Replayable,
+    T: ?Sized + Replayable,
 {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl<T> Clone for History<T>
+where
+    T: ?Sized + Replayable,
+{
+    fn clone(&self) -> Self {
+        Self {
+            history: self.history.clone(),
+        }
     }
 }

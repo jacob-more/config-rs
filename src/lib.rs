@@ -1,6 +1,7 @@
 use std::{
     ffi::OsStr,
-    fmt::Debug,
+    fmt::{Debug, Display},
+    hash::Hash,
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
     ops::Deref,
     os::unix::ffi::OsStrExt,
@@ -61,12 +62,89 @@ impl_from_config_parse_error!(std::num::ParseFloatError);
 impl_from_config_parse_error!(std::str::Utf8Error);
 impl_from_config_parse_error!(std::net::AddrParseError);
 
+#[derive(Debug)]
+pub struct Conf<T: ?Sized + Replayable>(T::Repr);
+
+impl<T> Clone for Conf<T>
+where
+    T: ?Sized + Replayable,
+{
+    fn clone(&self) -> Self {
+        Self(self.0.clone())
+    }
+}
+
+impl<T> AsRef<T> for Conf<T>
+where
+    T: ?Sized + Replayable,
+{
+    fn as_ref(&self) -> &T {
+        T::parse_value(&self.0)
+    }
+}
+
+impl<T> From<&T> for Conf<T>
+where
+    T: ?Sized + Replayable,
+{
+    fn from(value: &T) -> Self {
+        Self(T::unparse_value(value))
+    }
+}
+
+impl<T> PartialEq for Conf<T>
+where
+    T: ?Sized + Replayable + PartialEq,
+{
+    fn eq(&self, other: &Self) -> bool {
+        self.as_ref().eq(other.as_ref())
+    }
+}
+impl<T> Eq for Conf<T> where T: ?Sized + Replayable + Eq {}
+
+impl<T> PartialOrd for Conf<T>
+where
+    T: ?Sized + Replayable + PartialOrd,
+{
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        self.as_ref().partial_cmp(other.as_ref())
+    }
+}
+impl<T> Ord for Conf<T>
+where
+    T: ?Sized + Replayable + Ord,
+{
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.as_ref().cmp(other.as_ref())
+    }
+}
+
+impl<T> Hash for Conf<T>
+where
+    T: ?Sized + Replayable + Hash,
+{
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.as_ref().hash(state);
+    }
+}
+
+impl<T> Display for Conf<T>
+where
+    T: ?Sized + Replayable,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", T::display_repr(&self.0))
+    }
+}
+
 pub trait Replayable {
-    type Repr: Debug + Clone + Sized;
+    type Repr: ?Sized + Debug + Clone;
 
     fn pre_parse_value(value: Bytes) -> Result<Self::Repr, ConfigParseError>;
     fn parse_value(value: &Self::Repr) -> &Self;
     fn unparse_value(&self) -> Self::Repr;
+    fn display(&self) -> impl Display;
+    fn display_repr(value: &Self::Repr) -> impl Display;
 }
 
 impl Replayable for str {
@@ -87,6 +165,14 @@ impl Replayable for str {
     fn unparse_value(&self) -> Self::Repr {
         self.as_bytes().to_vec().into()
     }
+
+    fn display(&self) -> impl Display {
+        self
+    }
+
+    fn display_repr(value: &Self::Repr) -> impl Display {
+        Self::parse_value(value).display()
+    }
 }
 impl Replayable for Path {
     type Repr = Bytes;
@@ -102,6 +188,14 @@ impl Replayable for Path {
     fn unparse_value(&self) -> Self::Repr {
         self.as_os_str().as_bytes().to_vec().into()
     }
+
+    fn display(&self) -> impl Display {
+        self.display()
+    }
+
+    fn display_repr(value: &Self::Repr) -> impl Display {
+        Self::parse_value(value).display()
+    }
 }
 impl Replayable for OsStr {
     type Repr = Bytes;
@@ -116,6 +210,14 @@ impl Replayable for OsStr {
 
     fn unparse_value(&self) -> Self::Repr {
         self.as_bytes().to_vec().into()
+    }
+
+    fn display(&self) -> impl Display {
+        self.display()
+    }
+
+    fn display_repr(value: &Self::Repr) -> impl Display {
+        Self::parse_value(value).display()
     }
 }
 
@@ -142,6 +244,14 @@ impl Replayable for bool {
     fn unparse_value(&self) -> Self::Repr {
         *self
     }
+
+    fn display(&self) -> impl Display {
+        self
+    }
+
+    fn display_repr(value: &Self::Repr) -> impl Display {
+        value
+    }
 }
 impl Replayable for char {
     type Repr = char;
@@ -161,6 +271,14 @@ impl Replayable for char {
     fn unparse_value(&self) -> Self::Repr {
         *self
     }
+
+    fn display(&self) -> impl Display {
+        self
+    }
+
+    fn display_repr(value: &Self::Repr) -> impl Display {
+        value
+    }
 }
 
 macro_rules! impl_replayable_integer {
@@ -178,6 +296,14 @@ macro_rules! impl_replayable_integer {
 
             fn unparse_value(&self) -> Self::Repr {
                 *self
+            }
+
+            fn display(&self) -> impl Display {
+                self
+            }
+
+            fn display_repr(value: &Self::Repr) -> impl Display {
+                value
             }
         }
     };
@@ -205,7 +331,7 @@ impl_replayable_integer!(Ipv4Addr);
 impl_replayable_integer!(Ipv6Addr);
 
 #[derive(Debug)]
-pub enum ReplayOperation<T: Replayable> {
+pub enum ReplayOperation<T: ?Sized + Replayable> {
     Assign(T::Repr),
     AssignIfUndefined(T::Repr),
     Add(T::Repr),
@@ -215,7 +341,7 @@ pub enum ReplayOperation<T: Replayable> {
 }
 impl<T> Clone for ReplayOperation<T>
 where
-    T: Replayable,
+    T: ?Sized + Replayable,
 {
     fn clone(&self) -> Self {
         match self {
@@ -231,7 +357,7 @@ where
 
 pub trait Config<T>
 where
-    T: Replayable,
+    T: ?Sized + Replayable,
 {
     fn assign(&mut self, value: T::Repr);
     fn assign_if_undefined(&mut self, value: T::Repr);
@@ -249,7 +375,7 @@ where
 
 pub trait ConfigExt<T>: Config<T>
 where
-    T: Replayable,
+    T: ?Sized + Replayable,
 {
     fn parse_ast_entry(&mut self, operation: AstOperation) -> Result<(), ConfigParseError> {
         match operation {
@@ -283,7 +409,7 @@ where
 impl<C, T> ConfigExt<T> for C
 where
     C: Config<T>,
-    T: Replayable,
+    T: ?Sized + Replayable,
 {
 }
 
