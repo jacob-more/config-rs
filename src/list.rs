@@ -1,6 +1,10 @@
 use std::fmt::Display;
 
-use crate::{Conf, Config, ReplayOperation, Replayable, ast::{OPERATOR_ADD, OPERATOR_ASSIGN, OPERATOR_CLEAR}, header::ConfigHeader};
+use crate::{
+    Conf, Config, ReplayOperation, Replayable,
+    ast::{OPERATOR_ADD, OPERATOR_ASSIGN, OPERATOR_CLEAR},
+    header::ConfigHeader,
+};
 
 #[derive(Debug)]
 pub struct ConfigList<T: ?Sized + Replayable> {
