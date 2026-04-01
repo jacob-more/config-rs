@@ -60,14 +60,16 @@ where
     T: Replayable,
     T::Repr: Hash + Eq,
 {
-    fn assign(&mut self, value: Conf<T>) {
+    fn assign<C: Into<Conf<T>>>(&mut self, value: C) {
+        let value = value.into();
         self.header.history_mut().assign(value.clone());
         self.header.set_modified();
         self.set.clear();
         self.set.insert(value);
     }
 
-    fn assign_if_undefined(&mut self, value: Conf<T>) {
+    fn assign_if_undefined<C: Into<Conf<T>>>(&mut self, value: C) {
+        let value = value.into();
         if !self.is_defined() {
             self.header.set_modified();
             self.set.insert(value.clone());
@@ -75,13 +77,15 @@ where
         self.header.history_mut().assign_if_undefined(value);
     }
 
-    fn add(&mut self, value: Conf<T>) {
+    fn add<C: Into<Conf<T>>>(&mut self, value: C) {
+        let value = value.into();
         self.header.history_mut().add(value.clone());
         self.header.set_modified();
         self.set.insert(value);
     }
 
-    fn remove(&mut self, value: Conf<T>) {
+    fn remove<C: Into<Conf<T>>>(&mut self, value: C) {
+        let value = value.into();
         if self.set.remove(&value) {
             self.header.set_modified();
         }

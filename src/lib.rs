@@ -483,10 +483,10 @@ pub trait Config<T>
 where
     T: Replayable,
 {
-    fn assign(&mut self, value: Conf<T>);
-    fn assign_if_undefined(&mut self, value: Conf<T>);
-    fn add(&mut self, value: Conf<T>);
-    fn remove(&mut self, value: Conf<T>);
+    fn assign<C: Into<Conf<T>>>(&mut self, value: C);
+    fn assign_if_undefined<C: Into<Conf<T>>>(&mut self, value: C);
+    fn add<C: Into<Conf<T>>>(&mut self, value: C);
+    fn remove<C: Into<Conf<T>>>(&mut self, value: C);
     fn reset(&mut self);
     fn clear(&mut self);
 

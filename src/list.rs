@@ -63,14 +63,16 @@ where
     T: Replayable,
     T::Repr: PartialEq,
 {
-    fn assign(&mut self, value: Conf<T>) {
+    fn assign<C: Into<Conf<T>>>(&mut self, value: C) {
+        let value = value.into();
         self.header.history_mut().assign(value.clone());
         self.header.set_modified();
         self.list.clear();
         self.list.push(value);
     }
 
-    fn assign_if_undefined(&mut self, value: Conf<T>) {
+    fn assign_if_undefined<C: Into<Conf<T>>>(&mut self, value: C) {
+        let value = value.into();
         if !self.is_defined() {
             self.header.set_modified();
             self.list.push(value.clone());
@@ -78,13 +80,15 @@ where
         self.header.history_mut().assign_if_undefined(value);
     }
 
-    fn add(&mut self, value: Conf<T>) {
+    fn add<C: Into<Conf<T>>>(&mut self, value: C) {
+        let value = value.into();
         self.header.history_mut().add(value.clone());
         self.header.set_modified();
         self.list.push(value);
     }
 
-    fn remove(&mut self, value: Conf<T>) {
+    fn remove<C: Into<Conf<T>>>(&mut self, value: C) {
+        let value = value.into();
         self.list.retain(|x| {
             let remove = x == &value;
             if remove {
