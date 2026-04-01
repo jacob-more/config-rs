@@ -25,7 +25,7 @@ pub struct AstTree {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AstEntry {
-    Group { key: Bytes, entries: Vec<AstEntry> },
+    Group { key: Bytes, group: AstGroup },
     Operation { key: Bytes, operation: AstOperation },
 }
 
@@ -39,8 +39,11 @@ pub enum AstOperation {
     Clear,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AstGroup(Vec<AstEntry>);
+
 impl AstTree {
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             entries: Vec::new(),
         }
@@ -86,11 +89,17 @@ impl FromIterator<AstEntry> for AstTree {
     }
 }
 
+impl FromIterator<AstEntry> for AstGroup {
+    fn from_iter<T: IntoIterator<Item = AstEntry>>(entries: T) -> Self {
+        Self(entries.into_iter().collect())
+    }
+}
+
 impl AstEntry {
     pub fn new_group(key: impl Into<Bytes>, values: impl IntoIterator<Item = AstEntry>) -> Self {
         Self::Group {
             key: key.into(),
-            entries: values.into_iter().collect(),
+            group: values.into_iter().collect(),
         }
     }
 
@@ -160,10 +169,10 @@ impl Display for AstEntry {
         }
 
         match self {
-            Self::Group { key: name, entries } => {
+            Self::Group { key: name, group } => {
                 write!(f, "{}: {{", OsStr::from_bytes(name).display())?;
-                if entries.is_empty() {
-                    write!(f, "{} }}", entries.join(' '))?;
+                if group.0.is_empty() {
+                    write!(f, "{} }}", group.0.iter().join(' '))?;
                 } else {
                     write!(f, "}};")?;
                 }
