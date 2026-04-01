@@ -69,6 +69,7 @@ impl AstParser {
             const TYPE_QUOTED_STRING: &str = r#"(?:[^"\\]|\\.)*"#;
             const TYPE_UNQUOTED_STRING: &str = r"(?:[A-Za-z0-9_./\-:]+)";
             const WHITESPACE: &str = r"(?:\s|\r\n|\n)";
+            const COMMENT: &str = r"(?:\s*#[^\n]*)";
             let assign_operators = from_fn(|f| {
                 write!(
                     f,
@@ -119,7 +120,7 @@ impl AstParser {
                 )
             });
             let capture_whitespace =
-                from_fn(|f| write!(f, "(?<{CAPTURE_WHITESPACE}>{WHITESPACE}+)"));
+                from_fn(|f| write!(f, "(?<{CAPTURE_WHITESPACE}>{COMMENT}|{WHITESPACE}+)"));
             let parse_pattern = from_fn(|f| {
                 write!(f, r"{WHITESPACE}*")?;
                 write!(f, r"(?:")?;
@@ -336,8 +337,14 @@ mod test {
     #[case(b" ")]
     #[case(b"\t")]
     #[case(b"\n")]
+    #[case(b"#")]
+    #[case(b"#\n")]
+    #[case(b"#\r\n")]
     #[case(b"\r\n")]
     #[case(b" \t\n\r\n")]
+    #[case(b"\n# this is a comment")]
+    #[case(b"\n# this is a comment\n#")]
+    #[case(b"\n# this is a comment\n#\n")]
     fn parse_empty_ast(#[case] input: &[u8]) {
         let ast = AstParser::new()
             .parse_bytes(input.to_vec())
@@ -394,6 +401,58 @@ mod test {
         b"
         KEY+=UNQUOTED_STRING
         KEY=\"QUOTED String @\";
+        ",
+        AstTree::from_iter(vec![
+            AstEntry::new_add(b"KEY".to_vec(), b"UNQUOTED_STRING".to_vec()),
+            AstEntry::new_assign(b"KEY".to_vec(), b"QUOTED String @".to_vec()),
+        ])
+    )]
+    #[case(
+        b"# comment before a key-value
+        KEY+=UNQUOTED_STRING
+        KEY=\"QUOTED String @\";
+        ",
+        AstTree::from_iter(vec![
+            AstEntry::new_add(b"KEY".to_vec(), b"UNQUOTED_STRING".to_vec()),
+            AstEntry::new_assign(b"KEY".to_vec(), b"QUOTED String @".to_vec()),
+        ])
+    )]
+    #[case(
+        b"
+        KEY+=UNQUOTED_STRING
+        # comment between key-values
+        KEY=\"QUOTED String @\";
+        ",
+        AstTree::from_iter(vec![
+            AstEntry::new_add(b"KEY".to_vec(), b"UNQUOTED_STRING".to_vec()),
+            AstEntry::new_assign(b"KEY".to_vec(), b"QUOTED String @".to_vec()),
+        ])
+    )]
+    #[case(
+        b"
+        KEY+=UNQUOTED_STRING
+        KEY=\"QUOTED String @\";
+        # comment after key-value
+        ",
+        AstTree::from_iter(vec![
+            AstEntry::new_add(b"KEY".to_vec(), b"UNQUOTED_STRING".to_vec()),
+            AstEntry::new_assign(b"KEY".to_vec(), b"QUOTED String @".to_vec()),
+        ])
+    )]
+    #[case(
+        b"
+        KEY+=UNQUOTED_STRING # comment on same line as key-value
+        KEY=\"QUOTED String @\";# comment on same line as key-value
+        ",
+        AstTree::from_iter(vec![
+            AstEntry::new_add(b"KEY".to_vec(), b"UNQUOTED_STRING".to_vec()),
+            AstEntry::new_assign(b"KEY".to_vec(), b"QUOTED String @".to_vec()),
+        ])
+    )]
+    #[case(
+        b"
+        KEY+=UNQUOTED_STRING# comment on same line as key-value
+        KEY=\"QUOTED String @\"; # comment on same line as key-value
         ",
         AstTree::from_iter(vec![
             AstEntry::new_add(b"KEY".to_vec(), b"UNQUOTED_STRING".to_vec()),
@@ -514,6 +573,85 @@ mod test {
             PART1 = VALUE;
             PART2 = other
         }",
+        AstTree::from_iter(vec![
+            AstEntry::new_group(
+                b"KEY".to_vec(),
+                vec![
+                    AstEntry::new_assign(b"PART1".to_vec(), b"VALUE".to_vec()),
+                    AstEntry::new_assign(b"PART2".to_vec(), b"other".to_vec()),
+                ]
+            )
+        ])
+    )]
+    #[case(
+        b"# comment ahead of a group
+        KEY: {
+            PART1 = VALUE;
+            PART2 = other
+        }",
+        AstTree::from_iter(vec![
+            AstEntry::new_group(
+                b"KEY".to_vec(),
+                vec![
+                    AstEntry::new_assign(b"PART1".to_vec(), b"VALUE".to_vec()),
+                    AstEntry::new_assign(b"PART2".to_vec(), b"other".to_vec()),
+                ]
+            )
+        ])
+    )]
+    #[case(
+        b"KEY: {
+            # comment at the start of a group
+            PART1 = VALUE;
+            PART2 = other
+        }",
+        AstTree::from_iter(vec![
+            AstEntry::new_group(
+                b"KEY".to_vec(),
+                vec![
+                    AstEntry::new_assign(b"PART1".to_vec(), b"VALUE".to_vec()),
+                    AstEntry::new_assign(b"PART2".to_vec(), b"other".to_vec()),
+                ]
+            )
+        ])
+    )]
+    #[case(
+        b"KEY: {
+            PART1 = VALUE;
+            # comment in the middle of a group
+            PART2 = other
+        }",
+        AstTree::from_iter(vec![
+            AstEntry::new_group(
+                b"KEY".to_vec(),
+                vec![
+                    AstEntry::new_assign(b"PART1".to_vec(), b"VALUE".to_vec()),
+                    AstEntry::new_assign(b"PART2".to_vec(), b"other".to_vec()),
+                ]
+            )
+        ])
+    )]
+    #[case(
+        b"KEY: {
+            PART1 = VALUE;
+            PART2 = other
+            # comment at the end of a group
+        }",
+        AstTree::from_iter(vec![
+            AstEntry::new_group(
+                b"KEY".to_vec(),
+                vec![
+                    AstEntry::new_assign(b"PART1".to_vec(), b"VALUE".to_vec()),
+                    AstEntry::new_assign(b"PART2".to_vec(), b"other".to_vec()),
+                ]
+            )
+        ])
+    )]
+    #[case(
+        b"KEY: {
+            PART1 = VALUE;
+            PART2 = other
+        }# comment after a group",
         AstTree::from_iter(vec![
             AstEntry::new_group(
                 b"KEY".to_vec(),
