@@ -1,4 +1,6 @@
-use crate::{Conf, Config, ReplayOperation, Replayable, header::ConfigHeader};
+use std::fmt::Display;
+
+use crate::{Conf, Config, ReplayOperation, Replayable, ast::{OPERATOR_ADD, OPERATOR_ASSIGN, OPERATOR_CLEAR, OPERATOR_REMOVE}, header::ConfigHeader};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum AclAction {
@@ -147,6 +149,28 @@ where
             header: self.header.clone(),
             default: self.default.clone(),
             acl: self.acl.clone(),
+        }
+    }
+}
+
+impl<T> Display for ConfigAcl<T> where T: ?Sized + Replayable {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut values = self.values();
+        match values.next() {
+            Some((first_action, first_value)) => {
+                match first_action {
+                    AclAction::Allow => write!(f, "{} {OPERATOR_ASSIGN} {first_value};", self.key())?,
+                    AclAction::Deny => write!(f, "{} {OPERATOR_REMOVE} {first_value};", self.key())?,
+                }
+                for (action, value) in values {
+                    match action {
+                        AclAction::Allow => write!(f, "{} {OPERATOR_ADD} {value};", self.key())?,
+                        AclAction::Deny => write!(f, "{} {OPERATOR_REMOVE} {value};", self.key())?,
+                    }
+                }
+                Ok(())
+            },
+            None => write!(f, "{} {OPERATOR_CLEAR};", self.key()),
         }
     }
 }

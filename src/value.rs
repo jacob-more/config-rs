@@ -1,4 +1,8 @@
-use crate::{Conf, Config, ReplayOperation, Replayable, header::ConfigHeader};
+use std::fmt::Display;
+
+use crate::{
+    Conf, Config, ReplayOperation, Replayable, ast::OPERATOR_ASSIGN, header::ConfigHeader,
+};
 
 #[derive(Debug)]
 pub struct ConfigValue<T: ?Sized + Replayable> {
@@ -111,5 +115,14 @@ where
             default: self.default.clone(),
             value: self.value.clone(),
         }
+    }
+}
+
+impl<T> Display for ConfigValue<T>
+where
+    T: ?Sized + Replayable,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} {OPERATOR_ASSIGN} {};", self.key(), self.value())
     }
 }

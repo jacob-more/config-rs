@@ -1,6 +1,10 @@
-use std::{collections::HashSet, hash::Hash};
+use std::{collections::HashSet, fmt::Display, hash::Hash};
 
-use crate::{Conf, Config, ReplayOperation, Replayable, header::ConfigHeader};
+use crate::{
+    Conf, Config, ReplayOperation, Replayable,
+    ast::{OPERATOR_ADD, OPERATOR_ASSIGN, OPERATOR_CLEAR},
+    header::ConfigHeader,
+};
 
 #[derive(Debug)]
 pub struct ConfigSet<T: ?Sized + Replayable> {
@@ -118,6 +122,25 @@ where
             header: self.header.clone(),
             default: self.default.clone(),
             set: self.set.clone(),
+        }
+    }
+}
+
+impl<T> Display for ConfigSet<T>
+where
+    T: ?Sized + Replayable + Hash + Eq,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut values = self.values();
+        match values.next() {
+            Some(first) => {
+                write!(f, "{} {OPERATOR_ASSIGN} {first};", self.key())?;
+                for value in values {
+                    write!(f, " {} {OPERATOR_ADD} {value};", self.key())?;
+                }
+                Ok(())
+            }
+            None => write!(f, "{} {OPERATOR_CLEAR};", self.key()),
         }
     }
 }
