@@ -5,7 +5,7 @@ use crate::{
 };
 
 #[derive(Debug)]
-pub struct ConfigValue<T: ?Sized + Replayable> {
+pub struct ConfigValue<T: Replayable> {
     header: ConfigHeader<T>,
     default: Conf<T>,
     value: Option<Conf<T>>,
@@ -13,20 +13,24 @@ pub struct ConfigValue<T: ?Sized + Replayable> {
 
 impl<T> ConfigValue<T>
 where
-    T: ?Sized + Replayable,
+    T: Replayable,
 {
     pub fn new(key: &'static str) -> Self
     where
         T: Default,
+        Conf<T>: From<T>,
     {
         Self {
             header: ConfigHeader::new(key),
             value: None,
-            default: Conf::from(&T::default()),
+            default: Conf::from(T::default()),
         }
     }
 
-    pub fn new_with_default(key: &'static str, default: &T) -> Self {
+    pub fn new_with_default<X>(key: &'static str, default: X) -> Self
+    where
+        Conf<T>: From<X>,
+    {
         let default = Conf::from(default);
         Self {
             header: ConfigHeader::new(key),
@@ -46,35 +50,35 @@ where
 
 impl<T> Config<T> for ConfigValue<T>
 where
-    T: ?Sized + Replayable + PartialEq,
+    T: Replayable,
+    T::Repr: PartialEq,
 {
-    fn assign(&mut self, value: T::Repr) {
+    fn assign(&mut self, value: Conf<T>) {
         self.header.history_mut().assign(value.clone());
         self.header.set_modified();
-        self.value = Some(Conf(value));
+        self.value = Some(value);
     }
 
-    fn assign_if_undefined(&mut self, value: T::Repr) {
+    fn assign_if_undefined(&mut self, value: Conf<T>) {
         if !self.is_defined() {
             self.header.set_modified();
-            self.value = Some(Conf(value.clone()));
+            self.value = Some(value.clone());
         }
         self.header.history_mut().assign_if_undefined(value);
     }
 
-    fn add(&mut self, value: T::Repr) {
+    fn add(&mut self, value: Conf<T>) {
         self.header.history_mut().add(value.clone());
         self.header.set_modified();
-        self.value = Some(Conf(value));
+        self.value = Some(value);
     }
 
-    fn remove(&mut self, value: T::Repr) {
-        let conf = Conf(value);
-        if self.value.as_ref().is_some_and(|x| x == &conf) {
+    fn remove(&mut self, value: Conf<T>) {
+        if self.value.as_ref().is_some_and(|x| x == &value) {
             self.value = None;
             self.header.set_default();
         }
-        self.header.history_mut().remove(conf.0);
+        self.header.history_mut().remove(value);
     }
 
     fn reset(&mut self) {
@@ -107,7 +111,7 @@ where
 
 impl<T> Clone for ConfigValue<T>
 where
-    T: ?Sized + Replayable,
+    T: Replayable,
 {
     fn clone(&self) -> Self {
         Self {
@@ -120,7 +124,8 @@ where
 
 impl<T> Display for ConfigValue<T>
 where
-    T: ?Sized + Replayable,
+    T: Replayable,
+    Conf<T>: Display,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{} {OPERATOR_ASSIGN} {};", self.key(), self.value())

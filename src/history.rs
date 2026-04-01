@@ -1,13 +1,13 @@
-use crate::{ReplayOperation, Replayable};
+use crate::{Conf, ReplayOperation, Replayable};
 
 #[derive(Debug)]
-pub struct History<T: ?Sized + Replayable> {
+pub struct History<T: Replayable> {
     history: Vec<ReplayOperation<T>>,
 }
 
 impl<T> History<T>
 where
-    T: ?Sized + Replayable,
+    T: Replayable,
 {
     pub const fn new() -> Self {
         Self {
@@ -15,20 +15,20 @@ where
         }
     }
 
-    pub fn assign(&mut self, value: T::Repr) {
+    pub fn assign(&mut self, value: Conf<T>) {
         self.history.clear();
         self.history.push(ReplayOperation::Assign(value));
     }
 
-    pub fn assign_if_undefined(&mut self, value: T::Repr) {
+    pub fn assign_if_undefined(&mut self, value: Conf<T>) {
         self.history.push(ReplayOperation::AssignIfUndefined(value));
     }
 
-    pub fn add(&mut self, value: T::Repr) {
+    pub fn add(&mut self, value: Conf<T>) {
         self.history.push(ReplayOperation::Add(value.clone()));
     }
 
-    pub fn remove(&mut self, value: T::Repr) {
+    pub fn remove(&mut self, value: Conf<T>) {
         self.history.push(ReplayOperation::Remove(value));
     }
 
@@ -52,7 +52,7 @@ where
 
 impl<T> Default for History<T>
 where
-    T: ?Sized + Replayable,
+    T: Replayable,
 {
     fn default() -> Self {
         Self::new()
@@ -61,7 +61,7 @@ where
 
 impl<T> Clone for History<T>
 where
-    T: ?Sized + Replayable,
+    T: Replayable,
 {
     fn clone(&self) -> Self {
         Self {

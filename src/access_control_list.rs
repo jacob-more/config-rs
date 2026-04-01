@@ -13,7 +13,7 @@ pub enum AclAction {
 }
 
 #[derive(Debug)]
-pub struct ConfigAcl<T: ?Sized + Replayable> {
+pub struct ConfigAcl<T: Replayable> {
     header: ConfigHeader<T>,
     default: Vec<(AclAction, Conf<T>)>,
     acl: Vec<(AclAction, Conf<T>)>,
@@ -21,7 +21,7 @@ pub struct ConfigAcl<T: ?Sized + Replayable> {
 
 impl<T> ConfigAcl<T>
 where
-    T: ?Sized + Replayable,
+    T: Replayable,
 {
     pub const fn new(key: &'static str) -> Self {
         Self {
@@ -31,10 +31,13 @@ where
         }
     }
 
-    pub fn new_with_default(key: &'static str, default: &[(AclAction, &T)]) -> Self {
+    pub fn new_with_default<'x, X>(key: &'static str, default: &'x [(AclAction, X)]) -> Self
+    where
+        Conf<T>: From<&'x X>,
+    {
         let default: Vec<_> = default
             .iter()
-            .map(|(action, x)| (*action, Conf::from(*x)))
+            .map(|(action, x)| (*action, Conf::from(x)))
             .collect();
         Self {
             header: ConfigHeader::new(key),
@@ -80,39 +83,38 @@ where
 
 impl<T> Config<T> for ConfigAcl<T>
 where
-    T: ?Sized + Replayable + PartialEq,
+    T: Replayable,
+    T::Repr: PartialEq,
 {
-    fn assign(&mut self, value: <T as Replayable>::Repr) {
+    fn assign(&mut self, value: Conf<T>) {
         self.header.history_mut().assign(value.clone());
         self.header.set_modified();
         self.acl.clear();
-        self.acl.push((AclAction::Allow, Conf(value)));
+        self.acl.push((AclAction::Allow, value));
     }
 
-    fn assign_if_undefined(&mut self, value: T::Repr) {
+    fn assign_if_undefined(&mut self, value: Conf<T>) {
         if !self.is_defined() {
             self.header.set_modified();
-            self.acl.push((AclAction::Allow, Conf(value.clone())));
+            self.acl.push((AclAction::Allow, value.clone()));
         }
         self.header.history_mut().assign_if_undefined(value);
     }
 
-    fn add(&mut self, value: T::Repr) {
+    fn add(&mut self, value: Conf<T>) {
         self.header.history_mut().add(value.clone());
         self.header.set_modified();
         // The new action takes precedence over any exact duplicates.
-        let conf = Conf(value);
-        self.acl.retain(|(_, x)| x != &conf);
-        self.acl.push((AclAction::Allow, conf));
+        self.acl.retain(|(_, x)| x != &value);
+        self.acl.push((AclAction::Allow, value));
     }
 
-    fn remove(&mut self, value: T::Repr) {
+    fn remove(&mut self, value: Conf<T>) {
         self.header.history_mut().remove(value.clone());
         self.header.set_modified();
         // The new action takes precedence over any exact duplicates.
-        let conf = Conf(value);
-        self.acl.retain(|(_, x)| x != &conf);
-        self.acl.push((AclAction::Deny, conf));
+        self.acl.retain(|(_, x)| x != &value);
+        self.acl.push((AclAction::Deny, value));
     }
 
     fn reset(&mut self) {
@@ -146,7 +148,7 @@ where
 
 impl<T> Clone for ConfigAcl<T>
 where
-    T: ?Sized + Replayable,
+    T: Replayable,
 {
     fn clone(&self) -> Self {
         Self {
@@ -159,7 +161,8 @@ where
 
 impl<T> Display for ConfigAcl<T>
 where
-    T: ?Sized + Replayable,
+    T: Replayable,
+    Conf<T>: Display,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut values = self.values();

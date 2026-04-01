@@ -7,7 +7,7 @@ use crate::{
 };
 
 #[derive(Debug)]
-pub struct ConfigList<T: ?Sized + Replayable> {
+pub struct ConfigList<T: Replayable> {
     header: ConfigHeader<T>,
     default: Vec<Conf<T>>,
     list: Vec<Conf<T>>,
@@ -15,7 +15,7 @@ pub struct ConfigList<T: ?Sized + Replayable> {
 
 impl<T> ConfigList<T>
 where
-    T: ?Sized + Replayable,
+    T: Replayable,
 {
     pub const fn new(key: &'static str) -> Self {
         Self {
@@ -25,8 +25,11 @@ where
         }
     }
 
-    pub fn new_with_default(key: &'static str, default: &[&T]) -> Self {
-        let default: Vec<_> = default.iter().map(|x| Conf::from(*x)).collect();
+    pub fn new_with_default<'x, X>(key: &'static str, default: &'x [X]) -> Self
+    where
+        Conf<T>: From<&'x X>,
+    {
+        let default: Vec<_> = default.iter().map(Conf::from).collect();
         Self {
             header: ConfigHeader::new(key),
             list: default.clone(),
@@ -57,39 +60,39 @@ where
 
 impl<T> Config<T> for ConfigList<T>
 where
-    T: ?Sized + Replayable + PartialEq,
+    T: Replayable,
+    T::Repr: PartialEq,
 {
-    fn assign(&mut self, value: <T as Replayable>::Repr) {
+    fn assign(&mut self, value: Conf<T>) {
         self.header.history_mut().assign(value.clone());
         self.header.set_modified();
         self.list.clear();
-        self.list.push(Conf(value));
+        self.list.push(value);
     }
 
-    fn assign_if_undefined(&mut self, value: T::Repr) {
+    fn assign_if_undefined(&mut self, value: Conf<T>) {
         if !self.is_defined() {
             self.header.set_modified();
-            self.list.push(Conf(value.clone()));
+            self.list.push(value.clone());
         }
         self.header.history_mut().assign_if_undefined(value);
     }
 
-    fn add(&mut self, value: T::Repr) {
+    fn add(&mut self, value: Conf<T>) {
         self.header.history_mut().add(value.clone());
         self.header.set_modified();
-        self.list.push(Conf(value));
+        self.list.push(value);
     }
 
-    fn remove(&mut self, value: T::Repr) {
-        let conf = Conf(value);
+    fn remove(&mut self, value: Conf<T>) {
         self.list.retain(|x| {
-            let remove = x == &conf;
+            let remove = x == &value;
             if remove {
                 self.header.set_modified();
             }
             !remove
         });
-        self.header.history_mut().remove(conf.0);
+        self.header.history_mut().remove(value);
     }
 
     fn reset(&mut self) {
@@ -123,7 +126,7 @@ where
 
 impl<T> Clone for ConfigList<T>
 where
-    T: ?Sized + Replayable,
+    T: Replayable,
 {
     fn clone(&self) -> Self {
         Self {
@@ -136,7 +139,8 @@ where
 
 impl<T> Display for ConfigList<T>
 where
-    T: ?Sized + Replayable,
+    T: Replayable,
+    Conf<T>: Display,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut values = self.values();
