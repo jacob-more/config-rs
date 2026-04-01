@@ -42,6 +42,16 @@ pub enum AstOperation {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AstGroup(Vec<AstEntry>);
 
+impl AstGroup {
+    pub fn entries(&self) -> impl Iterator<Item = &'_ AstEntry> {
+        self.0.iter()
+    }
+
+    pub fn into_entries(self) -> impl Iterator<Item = AstEntry> {
+        self.0.into_iter()
+    }
+}
+
 impl AstTree {
     pub const fn new() -> Self {
         Self {
