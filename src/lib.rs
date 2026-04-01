@@ -1,11 +1,5 @@
 use std::{
-    ffi::OsStr,
-    fmt::{Debug, Display},
-    hash::Hash,
-    net::{IpAddr, Ipv4Addr, Ipv6Addr},
-    ops::Deref,
-    os::unix::ffi::OsStrExt,
-    path::Path,
+    borrow::Borrow, ffi::OsStr, fmt::{Debug, Display}, hash::Hash, net::{IpAddr, Ipv4Addr, Ipv6Addr}, ops::Deref, os::unix::ffi::OsStrExt, path::Path
 };
 
 use bytes::Bytes;
@@ -80,6 +74,12 @@ where
 {
     fn as_ref(&self) -> &T {
         T::parse_value(&self.0)
+    }
+}
+
+impl<T> Borrow<T> for Conf<T> where T: ?Sized + Replayable {
+    fn borrow(&self) -> &T {
+        self.as_ref()
     }
 }
 
