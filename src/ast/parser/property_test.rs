@@ -7,7 +7,7 @@ use proptest_derive::Arbitrary;
 use crate::ast::{
     AstEntry, AstTree,
     parser::{
-        AstParser, EscapeBytes, OPERATOR_BYTES_ADD, OPERATOR_BYTES_ASSIGN,
+        AstParser, IterEscaped, OPERATOR_BYTES_ADD, OPERATOR_BYTES_ASSIGN,
         OPERATOR_BYTES_ASSIGN_IF_UNDEFINED, OPERATOR_BYTES_CLEAR, OPERATOR_BYTES_REMOVE,
         OPERATOR_BYTES_RESET,
     },
@@ -75,17 +75,6 @@ impl AsBytes for PropOptionalTerminator {
 }
 
 #[derive(Debug, Arbitrary, Clone, PartialEq, Eq, Hash)]
-struct PropIdentifier {
-    #[proptest(regex = r"[A-Za-z0-9_./]+|[A-Za-z0-9_./][A-Za-z0-9_./\-:]*[A-Za-z0-9_./]")]
-    val: Vec<u8>,
-}
-impl AsBytes for PropIdentifier {
-    fn bytes(&self) -> impl Iterator<Item = u8> {
-        self.val.iter().copied()
-    }
-}
-
-#[derive(Debug, Arbitrary, Clone, PartialEq, Eq, Hash)]
 struct PropAssignOp {
     #[proptest(regex = r"=|:=|\+=|-=")]
     val: Vec<u8>,
@@ -108,55 +97,66 @@ impl AsBytes for PropResetOp {
 }
 
 #[derive(Debug, Arbitrary, Clone, PartialEq, Eq, Hash)]
-struct PropUnquotedString {
-    #[proptest(regex = r"(?s-u:[A-Za-z0-9_./\-]+)")]
-    val: Vec<u8>,
+enum PropString {
+    Quoted(#[proptest(regex = r#"(?s-u:[^"\\]|\\.)*"#)] Vec<u8>),
+    Unquoted(
+        #[proptest(regex = r#"(?s-u:[A-Za-z0-9_./](?:[A-Za-z0-9_./\-:]*[A-Za-z0-9_./])?)"#)]
+        Vec<u8>,
+    ),
 }
-impl AsBytes for PropUnquotedString {
+impl PropString {
+    fn as_ast_string(&self) -> Bytes {
+        match self {
+            Self::Quoted(items) => items,
+            Self::Unquoted(items) => items,
+        }
+        .iter()
+        .unescaped()
+        .copied()
+        .collect()
+    }
+}
+impl AsBytes for PropString {
     fn bytes(&self) -> impl Iterator<Item = u8> {
-        self.val.iter().copied()
+        match self {
+            Self::Quoted(items) => b"\"".iter().chain(items.iter()).chain(b"\"".iter()),
+            // Use empty strings so that the return types match. I prefer this
+            // to using Box<dyn> despite not having benchmarked the performance
+            // difference.
+            Self::Unquoted(items) => b"".iter().chain(items.iter()).chain(b"".iter()),
+        }
+        .copied()
     }
 }
 
 #[derive(Debug, Arbitrary, Clone, PartialEq, Eq, Hash)]
-struct PropQuotedString {
-    #[proptest(regex = r#"(?s-u:([^\\"]|\\\.)*)"#)]
-    val: Vec<u8>,
-}
-impl AsBytes for PropQuotedString {
-    fn bytes(&self) -> impl Iterator<Item = u8> {
-        self.val.iter().copied()
-    }
-}
-
-#[derive(Debug, Arbitrary, Clone, PartialEq, Eq, Hash)]
-struct PropKeyAssignUnquotedValue {
+struct PropKeyAssignValue {
     sep0: PropOptionalWhitespace,
-    identifier: PropIdentifier,
+    identifier: PropString,
     sep1: PropOptionalWhitespace,
     op: PropAssignOp,
     sep2: PropOptionalWhitespace,
-    value: PropUnquotedString,
+    value: PropString,
     sep3: PropOptionalWhitespace,
     terminator: PropOptionalTerminator,
 }
-impl PropKeyAssignUnquotedValue {
+impl PropKeyAssignValue {
     pub fn as_ast_entry(&self) -> AstEntry {
         match self.op.val.deref() {
             OPERATOR_BYTES_ASSIGN => {
-                AstEntry::new_assign(self.identifier.val.clone(), self.value.val.clone())
+                AstEntry::new_assign(self.identifier.as_ast_string(), self.value.as_ast_string())
             }
             OPERATOR_BYTES_ASSIGN_IF_UNDEFINED => AstEntry::new_assign_if_undefined(
-                self.identifier.val.clone(),
-                self.value.val.clone(),
+                self.identifier.as_ast_string(),
+                self.value.as_ast_string(),
             ),
             OPERATOR_BYTES_ADD => {
-                AstEntry::new_add(self.identifier.val.clone(), self.value.val.clone())
+                AstEntry::new_add(self.identifier.as_ast_string(), self.value.as_ast_string())
             }
             OPERATOR_BYTES_REMOVE => {
-                AstEntry::new_remove(self.identifier.val.clone(), self.value.val.clone())
+                AstEntry::new_remove(self.identifier.as_ast_string(), self.value.as_ast_string())
             }
-            OPERATOR_BYTES_RESET => AstEntry::new_reset(self.identifier.val.clone()),
+            OPERATOR_BYTES_RESET => AstEntry::new_reset(self.identifier.as_ast_string()),
             _ => panic!(
                 "operator not supported: {}",
                 OsStr::from_bytes(self.op.val.deref()).display()
@@ -164,7 +164,7 @@ impl PropKeyAssignUnquotedValue {
         }
     }
 }
-impl AsBytes for PropKeyAssignUnquotedValue {
+impl AsBytes for PropKeyAssignValue {
     fn bytes(&self) -> impl Iterator<Item = u8> {
         self.sep0
             .bytes()
@@ -177,64 +177,12 @@ impl AsBytes for PropKeyAssignUnquotedValue {
             .chain(self.terminator.bytes())
     }
 }
-impl AsAstEntry for PropKeyAssignUnquotedValue {}
-
-#[derive(Debug, Arbitrary, Clone, PartialEq, Eq, Hash)]
-struct PropKeyAssignQuotedValue {
-    sep0: PropOptionalWhitespace,
-    identifier: PropIdentifier,
-    sep1: PropOptionalWhitespace,
-    op: PropAssignOp,
-    sep2: PropOptionalWhitespace,
-    value: PropQuotedString,
-    sep3: PropOptionalWhitespace,
-    terminator: PropOptionalTerminator,
-}
-impl PropKeyAssignQuotedValue {
-    pub fn as_ast_entry(&self) -> AstEntry {
-        let value = EscapeBytes::new(self.value.val.iter().copied());
-        match self.op.val.deref() {
-            OPERATOR_BYTES_ASSIGN => {
-                AstEntry::new_assign(self.identifier.val.clone(), value.collect::<Bytes>())
-            }
-            OPERATOR_BYTES_ASSIGN_IF_UNDEFINED => AstEntry::new_assign_if_undefined(
-                self.identifier.val.clone(),
-                value.collect::<Bytes>(),
-            ),
-            OPERATOR_BYTES_ADD => {
-                AstEntry::new_add(self.identifier.val.clone(), value.collect::<Bytes>())
-            }
-            OPERATOR_BYTES_REMOVE => {
-                AstEntry::new_remove(self.identifier.val.clone(), value.collect::<Bytes>())
-            }
-            _ => panic!(
-                "assign operator not supported: {}",
-                OsStr::from_bytes(self.op.val.deref()).display()
-            ),
-        }
-    }
-}
-impl AsBytes for PropKeyAssignQuotedValue {
-    fn bytes(&self) -> impl Iterator<Item = u8> {
-        self.sep0
-            .bytes()
-            .chain(self.identifier.bytes())
-            .chain(self.sep1.bytes())
-            .chain(self.op.bytes())
-            .chain(self.sep2.bytes())
-            .chain(b"\"".iter().copied())
-            .chain(self.value.bytes())
-            .chain(b"\"".iter().copied())
-            .chain(self.sep3.bytes())
-            .chain(self.terminator.bytes())
-    }
-}
-impl AsAstEntry for PropKeyAssignQuotedValue {}
+impl AsAstEntry for PropKeyAssignValue {}
 
 #[derive(Debug, Arbitrary, Clone, PartialEq, Eq, Hash)]
 struct PropKeyReset {
     sep0: PropOptionalWhitespace,
-    identifier: PropIdentifier,
+    identifier: PropString,
     sep1: PropOptionalWhitespace,
     op: PropResetOp,
     sep2: PropOptionalWhitespace,
@@ -243,8 +191,8 @@ struct PropKeyReset {
 impl PropKeyReset {
     pub fn as_ast_entry(&self) -> AstEntry {
         match self.op.val.deref() {
-            OPERATOR_BYTES_CLEAR => AstEntry::new_clear(self.identifier.val.clone()),
-            OPERATOR_BYTES_RESET => AstEntry::new_reset(self.identifier.val.clone()),
+            OPERATOR_BYTES_CLEAR => AstEntry::new_clear(self.identifier.as_ast_string()),
+            OPERATOR_BYTES_RESET => AstEntry::new_reset(self.identifier.as_ast_string()),
             _ => panic!(
                 "reset operator not supported: {}",
                 OsStr::from_bytes(self.op.val.deref()).display()
@@ -267,15 +215,13 @@ impl AsAstEntry for PropKeyReset {}
 
 #[derive(Debug, Arbitrary, Clone, PartialEq, Eq, Hash)]
 enum PropKeyOpValue {
-    Unquoted(PropKeyAssignUnquotedValue),
-    Quoted(PropKeyAssignQuotedValue),
+    Assign(PropKeyAssignValue),
     Reset(PropKeyReset),
 }
 impl PropKeyOpValue {
     pub fn as_ast_entry(&self) -> AstEntry {
         match self {
-            Self::Unquoted(kov) => kov.as_ast_entry(),
-            Self::Quoted(kov) => kov.as_ast_entry(),
+            Self::Assign(kov) => kov.as_ast_entry(),
             Self::Reset(kov) => kov.as_ast_entry(),
         }
     }
@@ -283,8 +229,7 @@ impl PropKeyOpValue {
 impl AsBytes for PropKeyOpValue {
     fn bytes(&self) -> impl Iterator<Item = u8> {
         let bytes: Box<dyn Iterator<Item = u8>> = match self {
-            Self::Unquoted(kov) => Box::new(kov.bytes()),
-            Self::Quoted(kov) => Box::new(kov.bytes()),
+            Self::Assign(kov) => Box::new(kov.bytes()),
             Self::Reset(kov) => Box::new(kov.bytes()),
         };
         bytes
@@ -295,7 +240,7 @@ impl AsAstEntry for PropKeyOpValue {}
 #[derive(Debug, Arbitrary, Clone, PartialEq, Eq, Hash)]
 struct PropGroup {
     sep0: PropOptionalWhitespace,
-    identifier: PropIdentifier,
+    identifier: PropString,
     sep1: PropOptionalWhitespace,
     #[proptest(regex = r":")]
     op: Vec<u8>,
@@ -313,7 +258,7 @@ struct PropGroup {
 impl PropGroup {
     pub fn as_ast_entry(&self) -> AstEntry {
         AstEntry::new_group(
-            self.identifier.val.clone(),
+            self.identifier.as_ast_string(),
             self.entries.iter().map(|(e, _)| e.as_ast_entry()),
         )
     }
@@ -348,7 +293,7 @@ proptest! {
     }
 
     #[test]
-    fn single_key_op_unquoted_value(kov: PropKeyAssignUnquotedValue) {
+    fn single_key_op_unquoted_value(kov: PropKeyAssignValue) {
         let expected_ast = AstTree {
             entries: vec![kov.as_ast_entry()]
         };
@@ -358,10 +303,10 @@ proptest! {
     }
 
     #[test]
-    fn key_op_unquoted_value_and_key_op_unquoted_value(
-        kov1: PropKeyAssignUnquotedValue,
+    fn key_op_value_and_key_op_value(
+        kov1: PropKeyAssignValue,
         sep: PropWhitespace,
-        kov2: PropKeyAssignUnquotedValue,
+        kov2: PropKeyAssignValue,
     ) {
         let expected_ast = AstTree {
             entries: vec![
@@ -377,27 +322,8 @@ proptest! {
     }
 
     #[test]
-    fn key_op_unquoted_value_and_key_op_quoted_value(
-        kov1: PropKeyAssignUnquotedValue,
-        sep: PropWhitespace,
-        kov2: PropKeyAssignQuotedValue,
-    ) {
-        let expected_ast = AstTree {
-            entries: vec![
-                kov1.as_ast_entry(),
-                kov2.as_ast_entry(),
-            ]
-        };
-        let ast = AstParser::new().parse_bytes(
-            Vec::from_iter(kov1.bytes().chain(sep.bytes()).chain(kov2.bytes()))
-        ).parse_into_tree();
-        assert!(ast.is_ok(), "error converting input to tree: {ast:?}");
-        assert_eq!(ast.unwrap(), expected_ast);
-    }
-
-    #[test]
-    fn key_op_unquoted_value_and_key_reset(
-        kov1: PropKeyAssignUnquotedValue,
+    fn key_op_value_and_key_reset(
+        kov1: PropKeyAssignValue,
         sep: PropWhitespace,
         kov2: PropKeyReset,
     ) {
@@ -415,8 +341,8 @@ proptest! {
     }
 
     #[test]
-    fn key_op_unquoted_value_and_group(
-        kov1: PropKeyAssignUnquotedValue,
+    fn key_op_value_and_group(
+        kov1: PropKeyAssignValue,
         sep: PropWhitespace,
         kov2: PropGroup,
     ) {
@@ -434,83 +360,11 @@ proptest! {
     }
 
     #[test]
-    fn single_key_op_quoted_value(kov: PropKeyAssignQuotedValue) {
+    fn single_key_op_value(kov: PropKeyAssignValue) {
         let expected_ast = AstTree {
             entries: vec![kov.as_ast_entry()]
         };
         let ast = AstParser::new().parse_bytes(kov.as_input()).parse_into_tree();
-        assert!(ast.is_ok(), "error converting input to tree: {ast:?}");
-        assert_eq!(ast.unwrap(), expected_ast);
-    }
-
-    #[test]
-    fn key_op_quoted_value_and_key_op_unquoted_value(
-        kov1: PropKeyAssignQuotedValue,
-        kov2: PropKeyAssignUnquotedValue,
-    ) {
-        let expected_ast = AstTree {
-            entries: vec![
-                kov1.as_ast_entry(),
-                kov2.as_ast_entry(),
-            ]
-        };
-        let ast = AstParser::new().parse_bytes(
-            Vec::from_iter(kov1.bytes().chain(kov2.bytes()))
-        ).parse_into_tree();
-        assert!(ast.is_ok(), "error converting input to tree: {ast:?}");
-        assert_eq!(ast.unwrap(), expected_ast);
-    }
-
-    #[test]
-    fn key_op_quoted_value_and_key_op_quoted_value(
-        kov1: PropKeyAssignQuotedValue,
-        kov2: PropKeyAssignQuotedValue,
-    ) {
-        let expected_ast = AstTree {
-            entries: vec![
-                kov1.as_ast_entry(),
-                kov2.as_ast_entry(),
-            ]
-        };
-        let ast = AstParser::new().parse_bytes(
-            Vec::from_iter(kov1.bytes().chain(kov2.bytes()))
-        ).parse_into_tree();
-        assert!(ast.is_ok(), "error converting input to tree: {ast:?}");
-        assert_eq!(ast.unwrap(), expected_ast);
-    }
-
-    #[test]
-    fn key_op_quoted_value_and_key_reset(
-        kov1: PropKeyAssignQuotedValue,
-        kov2: PropKeyReset,
-    ) {
-        let expected_ast = AstTree {
-            entries: vec![
-                kov1.as_ast_entry(),
-                kov2.as_ast_entry(),
-            ]
-        };
-        let ast = AstParser::new().parse_bytes(
-            Vec::from_iter(kov1.bytes().chain(kov2.bytes()))
-        ).parse_into_tree();
-        assert!(ast.is_ok(), "error converting input to tree: {ast:?}");
-        assert_eq!(ast.unwrap(), expected_ast);
-    }
-
-    #[test]
-    fn key_op_quoted_value_and_group(
-        kov1: PropKeyAssignQuotedValue,
-        kov2: PropGroup,
-    ) {
-        let expected_ast = AstTree {
-            entries: vec![
-                kov1.as_ast_entry(),
-                kov2.as_ast_entry(),
-            ]
-        };
-        let ast = AstParser::new().parse_bytes(
-            Vec::from_iter(kov1.bytes().chain(kov2.bytes()))
-        ).parse_into_tree();
         assert!(ast.is_ok(), "error converting input to tree: {ast:?}");
         assert_eq!(ast.unwrap(), expected_ast);
     }
@@ -526,27 +380,9 @@ proptest! {
     }
 
     #[test]
-    fn key_reset_and_key_op_unquoted_value(
+    fn key_reset_and_key_op_value(
         kov1: PropKeyReset,
-        kov2: PropKeyAssignUnquotedValue,
-    ) {
-        let expected_ast = AstTree {
-            entries: vec![
-                kov1.as_ast_entry(),
-                kov2.as_ast_entry(),
-            ]
-        };
-        let ast = AstParser::new().parse_bytes(
-            Vec::from_iter(kov1.bytes().chain(kov2.bytes()))
-        ).parse_into_tree();
-        assert!(ast.is_ok(), "error converting input to tree: {ast:?}");
-        assert_eq!(ast.unwrap(), expected_ast);
-    }
-
-    #[test]
-    fn key_reset_and_key_op_quoted_value(
-        kov1: PropKeyReset,
-        kov2: PropKeyAssignQuotedValue,
+        kov2: PropKeyAssignValue,
     ) {
         let expected_ast = AstTree {
             entries: vec![

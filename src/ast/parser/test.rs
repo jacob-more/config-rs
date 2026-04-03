@@ -1,6 +1,14 @@
+use std::{ffi::OsStr, io::Read, os::unix::ffi::OsStrExt};
+
 use rstest::rstest;
 
-use crate::ast::{AstEntry, AstParser, AstTree};
+use crate::ast::{
+    AstEntry, AstParser, AstTree,
+    parser::{
+        OPERATOR_BYTES_ADD, OPERATOR_BYTES_ASSIGN, OPERATOR_BYTES_ASSIGN_IF_UNDEFINED,
+        OPERATOR_BYTES_CLEAR, OPERATOR_BYTES_REMOVE, OPERATOR_BYTES_RESET,
+    },
+};
 
 #[rstest]
 #[case(b"")]
@@ -21,6 +29,139 @@ fn parse_empty_ast(#[case] input: &[u8]) {
         .parse_into_tree();
     assert!(ast.is_ok(), "error converting input to tree: {ast:?}");
     assert_eq!(ast.unwrap(), AstTree::new());
+}
+
+#[rstest]
+fn parse_key_assign_value(
+    #[values(
+        (b"A".as_slice(), b"A".as_slice()),
+        (b"KEY".as_slice(), b"KEY".as_slice()),
+        (b"\"KEY\"".as_slice(), b"KEY".as_slice()),
+        (
+            b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789./-:_".as_slice(),
+            b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789./-:_".as_slice()
+        ),
+    )]
+    (raw_key, ast_key): (&'static [u8], &'static [u8]),
+    #[values(
+        b"".as_slice(),
+        b" ".as_slice(),
+        b"  \t\n".as_slice(),
+    )]
+    pre_op_whitespace: &'static [u8],
+    #[values(
+        OPERATOR_BYTES_ASSIGN,
+        OPERATOR_BYTES_ASSIGN_IF_UNDEFINED,
+        OPERATOR_BYTES_ADD,
+        OPERATOR_BYTES_REMOVE
+    )]
+    operator: &'static [u8],
+    #[values(
+        b"".as_slice(),
+        b" ".as_slice(),
+        b"  \t\n".as_slice(),
+    )]
+    post_op_whitespace: &'static [u8],
+    #[values(
+        (b"A".as_slice(), b"A".as_slice()),
+        (b"VALUE".as_slice(), b"VALUE".as_slice()),
+        (b"\"VALUE\"".as_slice(), b"VALUE".as_slice()),
+        (
+            b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789./-:_".as_slice(),
+            b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789./-:_".as_slice()
+        ),
+    )]
+    (raw_value, ast_value): (&'static [u8], &'static [u8]),
+    #[values(
+        b"".as_slice(),
+        b";".as_slice(),
+        b" ;".as_slice(),
+    )]
+    terminator: &'static [u8],
+) {
+    use crate::ast::parser::AstParser;
+
+    let expected_ast = AstTree::from_iter(vec![match operator {
+        OPERATOR_BYTES_ASSIGN => AstEntry::new_assign(ast_key, ast_value),
+        OPERATOR_BYTES_ASSIGN_IF_UNDEFINED => AstEntry::new_assign_if_undefined(ast_key, ast_value),
+        OPERATOR_BYTES_ADD => AstEntry::new_add(ast_key, ast_value),
+        OPERATOR_BYTES_REMOVE => AstEntry::new_remove(ast_key, ast_value),
+        _ => panic!(
+            "Unexpected operator: {}",
+            OsStr::from_bytes(operator).display()
+        ),
+    }]);
+
+    let ast = AstParser::new()
+        .parse_reader(
+            raw_key
+                .chain(pre_op_whitespace)
+                .chain(operator)
+                .chain(post_op_whitespace)
+                .chain(raw_value)
+                .chain(terminator),
+        )
+        .expect("Failed to read chain of raw bytes")
+        .parse_into_tree();
+    assert!(ast.is_ok(), "error converting input to tree: {ast:?}");
+    assert_eq!(ast.unwrap(), expected_ast);
+}
+
+#[rstest]
+fn parse_key_reset_value(
+    #[values(
+        (b"A".as_slice(), b"A".as_slice()),
+        (b"KEY".as_slice(), b"KEY".as_slice()),
+        (b"\"KEY\"".as_slice(), b"KEY".as_slice()),
+        (
+            b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789./-:_".as_slice(),
+            b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789./-:_".as_slice()
+        ),
+    )]
+    (raw_key, ast_key): (&'static [u8], &'static [u8]),
+    #[values(
+        b"".as_slice(),
+        b" ".as_slice(),
+        b"  \t\n".as_slice(),
+    )]
+    pre_op_whitespace: &'static [u8],
+    #[values(OPERATOR_BYTES_RESET, OPERATOR_BYTES_CLEAR)] operator: &'static [u8],
+    #[values(
+        b"".as_slice(),
+        b" ".as_slice(),
+        b"  \t\n".as_slice(),
+    )]
+    post_op_whitespace: &'static [u8],
+    #[values(
+        b"".as_slice(),
+        b";".as_slice(),
+        b" ;".as_slice(),
+    )]
+    terminator: &'static [u8],
+) {
+    use crate::ast::parser::AstParser;
+
+    let expected_ast = AstTree::from_iter(vec![match operator {
+        OPERATOR_BYTES_RESET => AstEntry::new_reset(ast_key),
+        OPERATOR_BYTES_CLEAR => AstEntry::new_clear(ast_key),
+        _ => panic!(
+            "Unexpected operator: {}",
+            OsStr::from_bytes(operator).display()
+        ),
+    }]);
+
+    let ast = AstParser::new()
+        .parse_reader(
+            raw_key
+                .chain(pre_op_whitespace)
+                .chain(operator)
+                .chain(post_op_whitespace)
+                .chain(terminator),
+        )
+        .expect("Failed to read chain of raw bytes")
+        .parse_into_tree();
+    assert!(ast.is_ok(), "error converting input to tree: {ast:?}");
+    assert_eq!(ast.unwrap(), expected_ast);
 }
 
 #[rstest]

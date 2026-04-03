@@ -1,7 +1,7 @@
 use std::{ffi::OsStr, fmt::from_fn, os::unix::ffi::OsStrExt, sync::LazyLock};
 
 use bytes::Bytes;
-use regex::bytes::Regex;
+use regex::bytes::{Captures, Match, Regex};
 use thiserror::Error;
 
 use crate::{
@@ -17,13 +17,16 @@ mod property_test;
 #[cfg(test)]
 mod test;
 
-const CAPTURE_KEY: &str = "key";
+const CAPTURE_ESCAPE_KEY: &str = "ekey";
+const CAPTURE_QUOTED_KEY: &str = "qkey";
+const CAPTURE_UNQUOTED_KEY: &str = "ukey";
 
 const CAPTURE_GB_BODY_OPEN: &str = "gbo";
 const CAPTURE_GB_BODY_CLOSE: &str = "gbc";
 
 const CAPTURE_KVP_ASSIGN_OPERATOR: &str = "aop";
 const CAPTURE_KVP_RESET_OPERATOR: &str = "rop";
+const CAPTURE_KVP_VALUE_ESCAPE: &str = "eval";
 const CAPTURE_KVP_VALUE_QUOTED: &str = "qval";
 const CAPTURE_KVP_VALUE_UNQUOTED: &str = "uval";
 
@@ -68,11 +71,11 @@ impl Default for AstParser {
 
 impl AstParser {
     pub fn new() -> Self {
-        static PARSE_PATERN: LazyLock<Regex> = LazyLock::new(|| {
-            const TYPE_IDENTIFIER: &str =
-                r"(?:[A-Za-z0-9_./]+|[A-Za-z0-9_./][A-Za-z0-9_./\-:]*[A-Za-z0-9_./])";
-            const TYPE_QUOTED_STRING: &str = r#"(?:[^"\\]|\\.)*"#;
-            const TYPE_UNQUOTED_STRING: &str = r"(?:[A-Za-z0-9_./\-:]+)";
+        static PARSE_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
+            const TYPE_ESCAPED_STRING: &str = r#"(?:[^"\\]|\\.)*"#;
+            const TYPE_QUOTED_STRING: &str = r#"[^"\\]*"#;
+            const TYPE_UNQUOTED_STRING: &str =
+                r"(?:[A-Za-z0-9_./](?:[A-Za-z0-9_./\-:]*[A-Za-z0-9_./])?)";
             const WHITESPACE: &str = r"(?:\s|\r\n|\n)";
             const COMMENT: &str = r"(?:\s*#[^\n]*)";
             let assign_operators = from_fn(|f| {
@@ -110,6 +113,11 @@ impl AstParser {
                 write!(f, r"|")?;
                 write!(
                     f,
+                    r#""(?<{CAPTURE_KVP_VALUE_ESCAPE}>{TYPE_ESCAPED_STRING})""#
+                )?;
+                write!(f, r"|")?;
+                write!(
+                    f,
                     r"(?<{CAPTURE_KVP_VALUE_UNQUOTED}>{TYPE_UNQUOTED_STRING})"
                 )?;
                 write!(f, r")")
@@ -117,7 +125,13 @@ impl AstParser {
             let capture_reset_op =
                 from_fn(|f| write!(f, r"(?<{CAPTURE_KVP_RESET_OPERATOR}>{reset_operators})"));
             let capture_key_operator_value = from_fn(|f| {
-                write!(f, r"(?<{CAPTURE_KEY}>{TYPE_IDENTIFIER})")?;
+                write!(f, r"(?:")?;
+                write!(f, r#""(?<{CAPTURE_QUOTED_KEY}>{TYPE_QUOTED_STRING})""#)?;
+                write!(f, r"|")?;
+                write!(f, r#""(?<{CAPTURE_ESCAPE_KEY}>{TYPE_ESCAPED_STRING})""#)?;
+                write!(f, r"|")?;
+                write!(f, r"(?<{CAPTURE_UNQUOTED_KEY}>{TYPE_UNQUOTED_STRING})")?;
+                write!(f, r")")?;
                 write!(f, r"{WHITESPACE}*")?;
                 write!(
                     f,
@@ -140,7 +154,7 @@ impl AstParser {
         });
 
         Self {
-            regex: PARSE_PATERN.clone(),
+            regex: PARSE_PATTERN.clone(),
         }
     }
 }
@@ -177,6 +191,27 @@ impl AstParser {
 
 impl AstParse {
     pub fn parse_into_tree(self) -> Result<AstTree, AstParseError> {
+        fn capture_string<'a>(
+            source_buffer: &Bytes,
+            captured: &Captures<'a>,
+            key_unquoted: &str,
+            key_quoted: &str,
+            key_escaped: &str,
+        ) -> Option<(Match<'a>, Bytes)> {
+            captured
+                .name(key_unquoted)
+                .or_else(|| captured.name(key_quoted))
+                .map(|matched| (matched, source_buffer.slice_ref(matched.as_bytes())))
+                .or_else(|| {
+                    // Replacing escaped characters requires allocating a new
+                    // `Bytes` buffer. We'd rather not re-allocate. Hence, why
+                    // this is its own capture group.
+                    captured
+                        .name(key_escaped)
+                        .map(|matched| (matched, matched.as_bytes().unescaped().copied().collect()))
+                })
+        }
+
         struct AstGroup {
             span_start: usize,
             name: Bytes,
@@ -205,24 +240,24 @@ impl AstParse {
             );
             next_start = matched.end();
 
-            if let Some(matched_key) = captured.name(CAPTURE_KEY) {
-                let key = self.buffer.slice_ref(matched_key.as_bytes());
+            // CAPTURE_QUOTED_KEY
+            if let Some((matched_key, key)) = capture_string(
+                &self.buffer,
+                &captured,
+                CAPTURE_UNQUOTED_KEY,
+                CAPTURE_QUOTED_KEY,
+                CAPTURE_ESCAPE_KEY,
+            ) {
                 let entry = if let Some(matched_op) = captured.name(CAPTURE_KVP_ASSIGN_OPERATOR) {
-                    let mut value = if let Some(matched_value) =
-                        captured.name(CAPTURE_KVP_VALUE_QUOTED)
-                    {
-                        self.buffer.slice_ref(matched_value.as_bytes())
-                    } else if let Some(matched_value) = captured.name(CAPTURE_KVP_VALUE_UNQUOTED) {
-                        self.buffer.slice_ref(matched_value.as_bytes())
-                    } else {
-                        Bytes::new()
-                    };
-                    // Replacing escaped characters requires allocating a new
-                    // `Bytes` buffer. We'd rather not re-allocate and instead just
-                    // point to the buffer from which everything was parsed.
-                    if value.contains(&b'\\') {
-                        value = Bytes::from_iter(EscapeBytes::new(value.into_iter()))
-                    }
+                    let value = capture_string(
+                        &self.buffer,
+                        &captured,
+                        CAPTURE_KVP_VALUE_UNQUOTED,
+                        CAPTURE_KVP_VALUE_QUOTED,
+                        CAPTURE_KVP_VALUE_ESCAPE,
+                    )
+                    .map(|(_, value)| value)
+                    .unwrap_or_default();
                     match matched_op.as_bytes() {
                         OPERATOR_BYTES_ASSIGN => AstEntry::new_assign(key, value),
                         OPERATOR_BYTES_ASSIGN_IF_UNDEFINED => {
@@ -306,24 +341,42 @@ impl AstParse {
     }
 }
 
-struct EscapeBytes<I>(I);
-impl<I> EscapeBytes<I>
+trait IterEscaped<I> {
+    fn unescaped(self) -> UnescapeBytes<I>
+    where
+        Self: Sized;
+}
+
+impl<'a, I> IterEscaped<I::IntoIter> for I
 where
-    I: Iterator<Item = u8>,
+    I: IntoIterator<Item = &'a u8>,
+{
+    fn unescaped(self) -> UnescapeBytes<I::IntoIter>
+    where
+        Self: Sized,
+    {
+        UnescapeBytes::new(self.into_iter())
+    }
+}
+
+struct UnescapeBytes<I>(I);
+impl<'a, I> UnescapeBytes<I>
+where
+    I: Iterator<Item = &'a u8>,
 {
     fn new(unescaped_string: I) -> Self {
         Self(unescaped_string)
     }
 }
-impl<I: Iterator> Iterator for EscapeBytes<I>
+impl<'a, I> Iterator for UnescapeBytes<I>
 where
-    I: Iterator<Item = u8>,
+    I: Iterator<Item = &'a u8>,
 {
     type Item = I::Item;
 
     fn next(&mut self) -> Option<I::Item> {
         let byte = self.0.next()?;
-        if byte == b'\\' {
+        if *byte == b'\\' {
             Some(self.0.next().unwrap_or(byte))
         } else {
             Some(byte)
