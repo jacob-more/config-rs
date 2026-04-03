@@ -41,6 +41,10 @@ fn parse_key_assign_value(
             b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789./-:_".as_slice(),
             b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789./-:_".as_slice()
         ),
+        (
+            b"\"Key with \\!\\@\\#\\$\\%\\^\\&\\*\\(\\)\\-\\=\\{\\}\\[\\]\\|\\\\\\:\\;\\\"\\'\\<\\>\\,\\.\\?\\/\\~\\` \\\"escape\\\" characters\"".as_slice(),
+            b"Key with !@#$%^&*()-={}[]|\\:;\"'<>,.?/~` \"escape\" characters".as_slice()
+        ),
     )]
     (raw_key, ast_key): (&'static [u8], &'static [u8]),
     #[values(
@@ -69,6 +73,10 @@ fn parse_key_assign_value(
         (
             b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789./-:_".as_slice(),
             b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789./-:_".as_slice()
+        ),
+        (
+            b"\"Value with \\*\\$\\\"escape\\\" characters\"".as_slice(),
+            b"Value with *$\"escape\" characters".as_slice()
         ),
     )]
     (raw_value, ast_value): (&'static [u8], &'static [u8]),
@@ -117,6 +125,10 @@ fn parse_key_reset_value(
             b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789./-:_".as_slice(),
             b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789./-:_".as_slice()
         ),
+        (
+            b"\"Key with \\!\\@\\#\\$\\%\\^\\&\\*\\(\\)\\-\\=\\{\\}\\[\\]\\|\\\\\\:\\;\\\"\\'\\<\\>\\,\\.\\?\\/\\~\\` \\\"escape\\\" characters\"".as_slice(),
+            b"Key with !@#$%^&*()-={}[]|\\:;\"'<>,.?/~` \"escape\" characters".as_slice()
+        ),
     )]
     (raw_key, ast_key): (&'static [u8], &'static [u8]),
     #[values(
@@ -156,6 +168,71 @@ fn parse_key_reset_value(
                 .chain(pre_op_whitespace)
                 .chain(operator)
                 .chain(post_op_whitespace)
+                .chain(terminator),
+        )
+        .expect("Failed to read chain of raw bytes")
+        .parse_into_tree();
+    assert!(ast.is_ok(), "error converting input to tree: {ast:?}");
+    assert_eq!(ast.unwrap(), expected_ast);
+}
+
+#[rstest]
+fn parse_key_group(
+    #[values(
+        (b"A".as_slice(), b"A".as_slice()),
+        (b"KEY".as_slice(), b"KEY".as_slice()),
+        (b"\"KEY\"".as_slice(), b"KEY".as_slice()),
+        (
+            b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789./-:_".as_slice(),
+            b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789./-:_".as_slice()
+        ),
+        (
+            b"\"Key with \\!\\@\\#\\$\\%\\^\\&\\*\\(\\)\\-\\=\\{\\}\\[\\]\\|\\\\\\:\\;\\\"\\'\\<\\>\\,\\.\\?\\/\\~\\` \\\"escape\\\" characters\"".as_slice(),
+            b"Key with !@#$%^&*()-={}[]|\\:;\"'<>,.?/~` \"escape\" characters".as_slice()
+        ),
+    )]
+    (raw_group_key, ast_group_key): (&'static [u8], &'static [u8]),
+    #[values(
+        b"".as_slice(),
+        b" ".as_slice(),
+        b"  \t\n".as_slice(),
+    )]
+    pre_group_op_whitespace: &'static [u8],
+    #[values(
+        b"".as_slice(),
+        b" ".as_slice(),
+        b"  \t\n".as_slice(),
+    )]
+    post_group_op_whitespace: &'static [u8],
+    #[values(
+        b"".as_slice(),
+        b" ".as_slice(),
+        b"  \t\n".as_slice(),
+        b"#\n".as_slice(),
+        b"# comment with text\n".as_slice(),
+        b"# comment with text\n#second comment   \n".as_slice(),
+    )]
+    group_inner_whitespace: &'static [u8],
+    #[values(
+        b"".as_slice(),
+        b";".as_slice(),
+        b" ;".as_slice(),
+    )]
+    terminator: &'static [u8],
+) {
+    use crate::ast::parser::AstParser;
+
+    let expected_ast = AstTree::from_iter(vec![AstEntry::new_group(ast_group_key, vec![])]);
+
+    let ast = AstParser::new()
+        .parse_reader(
+            raw_group_key
+                .chain(pre_group_op_whitespace)
+                .chain(b":".as_slice())
+                .chain(post_group_op_whitespace)
+                .chain(b"{".as_slice())
+                .chain(group_inner_whitespace)
+                .chain(b"}".as_slice())
                 .chain(terminator),
         )
         .expect("Failed to read chain of raw bytes")
