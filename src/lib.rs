@@ -245,6 +245,22 @@ impl AsRef<OsStr> for Conf<&OsStr> {
     }
 }
 
+impl TryFrom<&[u8]> for Conf<&OsStr> {
+    type Error = ConfigParseError;
+
+    fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
+        Ok(Self(value.to_vec().into()))
+    }
+}
+
+impl TryFrom<Vec<u8>> for Conf<&OsStr> {
+    type Error = ConfigParseError;
+
+    fn try_from(value: Vec<u8>) -> Result<Self, Self::Error> {
+        Self::try_from(Bytes::from(value))
+    }
+}
+
 impl TryFrom<Bytes> for Conf<&OsStr> {
     type Error = ConfigParseError;
 
@@ -262,6 +278,18 @@ impl From<&OsStr> for Conf<&OsStr> {
 impl From<OsString> for Conf<&OsStr> {
     fn from(value: OsString) -> Self {
         Self(value.into_vec().into())
+    }
+}
+
+impl From<&str> for Conf<&OsStr> {
+    fn from(value: &str) -> Self {
+        Self::from(OsStr::new(value))
+    }
+}
+
+impl From<String> for Conf<&OsStr> {
+    fn from(value: String) -> Self {
+        Self::from(OsString::from(value))
     }
 }
 
