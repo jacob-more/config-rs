@@ -150,9 +150,35 @@ impl Replayable for &str {
 
 impl AsRef<str> for Conf<&str> {
     fn as_ref(&self) -> &str {
-        // TODO: use unchecked interface since we already verified utf8.
-        // keep until lifetime checks are confirmed.
-        str::from_utf8(&self.0).unwrap()
+        // Safety:
+        //
+        // > The bytes passed in must be valid UTF-8.
+        //
+        // The bytes are validated as utf8 when a Conf<&str> is constructed and
+        // although Bytes has multiple references, it is immutable so the
+        // validity of the utf8 has not changed.
+        unsafe { str::from_utf8_unchecked(&self.0) }
+    }
+}
+
+impl TryFrom<&[u8]> for Conf<&str> {
+    type Error = ConfigParseError;
+
+    fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
+        // Validates that the underlying bytes are utf8 encoded. Required for
+        // later safety guarantees.
+        str::from_utf8(value)?;
+        Ok(Self(value.to_vec().into()))
+    }
+}
+
+impl TryFrom<Vec<u8>> for Conf<&str> {
+    type Error = ConfigParseError;
+
+    fn try_from(value: Vec<u8>) -> Result<Self, Self::Error> {
+        // try_from(Bytes) validates that the underlying bytes are utf8 encoded.
+        // Required for later safety guarantees.
+        Self::try_from(Bytes::from(value))
     }
 }
 
@@ -160,20 +186,45 @@ impl TryFrom<Bytes> for Conf<&str> {
     type Error = ConfigParseError;
 
     fn try_from(value: Bytes) -> Result<Self, Self::Error> {
-        // Validates that the underlying bytes are utf8 encoded.
+        // Validates that the underlying bytes are utf8 encoded. Required for
+        // later safety guarantees.
         str::from_utf8(&value)?;
         Ok(Self(value))
     }
 }
 
+impl TryFrom<&OsStr> for Conf<&str> {
+    type Error = ConfigParseError;
+
+    fn try_from(value: &OsStr) -> Result<Self, Self::Error> {
+        // try_from(&[u8]) validates that the underlying bytes are utf8 encoded.
+        // Required for later safety guarantees.
+        Self::try_from(value.as_bytes())
+    }
+}
+
+impl TryFrom<OsString> for Conf<&str> {
+    type Error = ConfigParseError;
+
+    fn try_from(value: OsString) -> Result<Self, Self::Error> {
+        // try_from(Vec<u8>) validates that the underlying bytes are utf8
+        // encoded. Required for later safety guarantees.
+        Self::try_from(value.into_vec())
+    }
+}
+
 impl From<&str> for Conf<&str> {
     fn from(value: &str) -> Self {
+        // The input is already valid utf8. Safety guarantees for later
+        // unchecked cast back into &str are fulfilled.
         value.to_string().into()
     }
 }
 
 impl From<String> for Conf<&str> {
     fn from(value: String) -> Self {
+        // The input is already valid utf8. Safety guarantees for later
+        // unchecked cast into &str are fulfilled.
         Self(value.into_bytes().into())
     }
 }
