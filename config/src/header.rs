@@ -1,7 +1,7 @@
-use crate::{Replayable, history::History};
+use crate::{ICval, history::History};
 
 #[derive(Debug)]
-pub struct ConfigHeader<T: Replayable> {
+pub struct ConfigHeader<T: ICval> {
     key: &'static str,
     history: History<T>,
     is_default: bool,
@@ -9,7 +9,7 @@ pub struct ConfigHeader<T: Replayable> {
 
 impl<T> ConfigHeader<T>
 where
-    T: Replayable,
+    T: ICval,
 {
     pub const fn new(key: &'static str) -> Self {
         Self {
@@ -46,7 +46,7 @@ where
 
 impl<T> Clone for ConfigHeader<T>
 where
-    T: Replayable,
+    T: ICval,
 {
     fn clone(&self) -> Self {
         Self {

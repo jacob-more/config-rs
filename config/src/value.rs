@@ -1,37 +1,35 @@
 use std::fmt::Display;
 
-use crate::{
-    Conf, ConfigOperation, ReplayOperation, Replayable, ast::OPERATOR_ASSIGN, header::ConfigHeader,
-};
+use crate::{ConfigOperation, Cval, ICval, Operation, ast::OPERATOR_ASSIGN, header::ConfigHeader};
 
 #[derive(Debug)]
-pub struct ConfigValue<T: Replayable> {
+pub struct ConfigValue<T: ICval> {
     header: ConfigHeader<T>,
-    default: Conf<T>,
-    value: Option<Conf<T>>,
+    default: Cval<T>,
+    value: Option<Cval<T>>,
 }
 
 impl<T> ConfigValue<T>
 where
-    T: Replayable,
+    T: ICval,
 {
     pub fn new(key: &'static str) -> Self
     where
         T: Default,
-        Conf<T>: From<T>,
+        Cval<T>: From<T>,
     {
         Self {
             header: ConfigHeader::new(key),
             value: None,
-            default: Conf::from(T::default()),
+            default: Cval::from(T::default()),
         }
     }
 
     pub fn new_with_default<X>(key: &'static str, default: X) -> Self
     where
-        Conf<T>: From<X>,
+        Cval<T>: From<X>,
     {
-        let default = Conf::from(default);
+        let default = Cval::from(default);
         Self {
             header: ConfigHeader::new(key),
             value: None,
@@ -43,24 +41,24 @@ where
         self.header.key()
     }
 
-    pub fn value(&self) -> &Conf<T> {
+    pub fn value(&self) -> &Cval<T> {
         self.value.as_ref().unwrap_or(&self.default)
     }
 }
 
 impl<T> ConfigOperation<T> for ConfigValue<T>
 where
-    T: Replayable,
+    T: ICval,
     T::Repr: PartialEq,
 {
-    fn assign<C: Into<Conf<T>>>(&mut self, value: C) {
+    fn assign<C: Into<Cval<T>>>(&mut self, value: C) {
         let value = value.into();
         self.header.history_mut().assign(value.clone());
         self.header.set_modified();
         self.value = Some(value);
     }
 
-    fn assign_if_undefined<C: Into<Conf<T>>>(&mut self, value: C) {
+    fn assign_if_undefined<C: Into<Cval<T>>>(&mut self, value: C) {
         let value = value.into();
         if !self.is_defined() {
             self.header.set_modified();
@@ -69,14 +67,14 @@ where
         self.header.history_mut().assign_if_undefined(value);
     }
 
-    fn add<C: Into<Conf<T>>>(&mut self, value: C) {
+    fn add<C: Into<Cval<T>>>(&mut self, value: C) {
         let value = value.into();
         self.header.history_mut().add(value.clone());
         self.header.set_modified();
         self.value = Some(value);
     }
 
-    fn remove<C: Into<Conf<T>>>(&mut self, value: C) {
+    fn remove<C: Into<Cval<T>>>(&mut self, value: C) {
         let value = value.into();
         if self.value.as_ref().is_some_and(|x| x == &value) {
             self.value = None;
@@ -105,7 +103,7 @@ where
         self.value.is_some()
     }
 
-    fn history<'a>(&'a self) -> impl Iterator<Item = &'a ReplayOperation<T>>
+    fn history<'a>(&'a self) -> impl Iterator<Item = &'a Operation<T>>
     where
         T: 'a,
     {
@@ -115,7 +113,7 @@ where
 
 impl<T> Clone for ConfigValue<T>
 where
-    T: Replayable,
+    T: ICval,
 {
     fn clone(&self) -> Self {
         Self {
@@ -128,8 +126,8 @@ where
 
 impl<T> Display for ConfigValue<T>
 where
-    T: Replayable,
-    Conf<T>: Display,
+    T: ICval,
+    Cval<T>: Display,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{} {OPERATOR_ASSIGN} {};", self.key(), self.value())

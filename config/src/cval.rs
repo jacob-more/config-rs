@@ -4,6 +4,7 @@ use std::{
     fmt::{Debug, Display},
     hash::Hash,
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
+    ops::Deref,
     os::unix::ffi::{OsStrExt, OsStringExt},
     path::{Path, PathBuf},
 };
@@ -12,60 +13,74 @@ use bytes::Bytes;
 
 use crate::{ConfigParseOperationError, ReprParseConfigOperationError};
 
-pub trait Replayable {
+/// This trait is implemented on types that can be represented by `Cval` and
+/// defines what the internal representation used for that type.
+pub trait ICval {
     type Repr: Debug + Clone;
 }
 
+/// A type used to represent a single value in configurations. It should be
+/// cheaply cloneable and might be reference counted if it requires heap
+/// allocation.
 #[derive(Debug)]
-pub struct Conf<T: Replayable>(T::Repr);
+pub struct Cval<T: ICval>(T::Repr);
 
-impl<T> Clone for Conf<T>
+impl<T> Cval<T>
 where
-    T: Replayable,
+    T: ICval,
+{
+    pub(crate) fn into_inner(self) -> T::Repr {
+        self.0
+    }
+}
+
+impl<T> Clone for Cval<T>
+where
+    T: ICval,
 {
     fn clone(&self) -> Self {
         Self(self.0.clone())
     }
 }
 
-impl<T> Borrow<T> for Conf<T>
+impl<T> Borrow<T> for Cval<T>
 where
     Self: AsRef<T>,
-    T: Replayable,
+    T: ICval,
 {
     fn borrow(&self) -> &T {
         self.as_ref()
     }
 }
 
-impl<T> PartialEq for Conf<T>
+impl<T> PartialEq for Cval<T>
 where
-    T: Replayable,
+    T: ICval,
     T::Repr: PartialEq,
 {
     fn eq(&self, other: &Self) -> bool {
         self.0.eq(&other.0)
     }
 }
-impl<T> Eq for Conf<T>
+impl<T> Eq for Cval<T>
 where
-    T: Replayable,
+    T: ICval,
     T::Repr: Eq,
 {
 }
 
-impl<T> PartialOrd for Conf<T>
+impl<T> PartialOrd for Cval<T>
 where
-    T: Replayable,
+    T: ICval,
     T::Repr: PartialOrd,
 {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         self.0.partial_cmp(&other.0)
     }
 }
-impl<T> Ord for Conf<T>
+impl<T> Ord for Cval<T>
 where
-    T: Replayable,
+    T: ICval,
     T::Repr: Ord,
 {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
@@ -73,9 +88,9 @@ where
     }
 }
 
-impl<T> Hash for Conf<T>
+impl<T> Hash for Cval<T>
 where
-    T: Replayable,
+    T: ICval,
     T::Repr: Hash,
 {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
@@ -83,10 +98,10 @@ where
     }
 }
 
-impl<'a, 'b, A, B> From<&'b mut A> for Conf<B>
+impl<'a, 'b, A, B> From<&'b mut A> for Cval<B>
 where
-    Conf<B>: From<&'a A>,
-    B: Replayable,
+    Cval<B>: From<&'a A>,
+    B: ICval,
     'b: 'a,
 {
     fn from(value: &'b mut A) -> Self {
@@ -94,24 +109,41 @@ where
     }
 }
 
-impl Replayable for &str {
+impl ICval for &str {
     type Repr = Bytes;
 }
 
-impl AsRef<str> for Conf<&str> {
-    fn as_ref(&self) -> &str {
+impl Deref for Cval<&str> {
+    type Target = str;
+
+    fn deref(&self) -> &Self::Target {
         // Safety:
         //
         // > The bytes passed in must be valid UTF-8.
         //
-        // The bytes are validated as utf8 when a Conf<&str> is constructed and
+        // The bytes are validated as utf8 when a Cval<&str> is constructed and
         // although Bytes has multiple references, it is immutable so the
         // validity of the utf8 has not changed.
         unsafe { str::from_utf8_unchecked(&self.0) }
     }
 }
 
-impl TryFrom<&[u8]> for Conf<&str> {
+impl AsRef<str> for Cval<&str> {
+    fn as_ref(&self) -> &str {
+        self.deref()
+    }
+}
+
+impl<T> AsRef<T> for Cval<&str>
+where
+    for<'a> str: AsRef<T>,
+{
+    fn as_ref(&self) -> &T {
+        self.deref().as_ref()
+    }
+}
+
+impl TryFrom<&[u8]> for Cval<&str> {
     type Error = ConfigParseOperationError;
 
     fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
@@ -122,7 +154,7 @@ impl TryFrom<&[u8]> for Conf<&str> {
     }
 }
 
-impl TryFrom<Vec<u8>> for Conf<&str> {
+impl TryFrom<Vec<u8>> for Cval<&str> {
     type Error = ConfigParseOperationError;
 
     fn try_from(value: Vec<u8>) -> Result<Self, Self::Error> {
@@ -132,7 +164,7 @@ impl TryFrom<Vec<u8>> for Conf<&str> {
     }
 }
 
-impl TryFrom<Bytes> for Conf<&str> {
+impl TryFrom<Bytes> for Cval<&str> {
     type Error = ConfigParseOperationError;
 
     fn try_from(value: Bytes) -> Result<Self, Self::Error> {
@@ -143,7 +175,7 @@ impl TryFrom<Bytes> for Conf<&str> {
     }
 }
 
-impl TryFrom<&OsStr> for Conf<&str> {
+impl TryFrom<&OsStr> for Cval<&str> {
     type Error = ConfigParseOperationError;
 
     fn try_from(value: &OsStr) -> Result<Self, Self::Error> {
@@ -153,7 +185,7 @@ impl TryFrom<&OsStr> for Conf<&str> {
     }
 }
 
-impl TryFrom<OsString> for Conf<&str> {
+impl TryFrom<OsString> for Cval<&str> {
     type Error = ConfigParseOperationError;
 
     fn try_from(value: OsString) -> Result<Self, Self::Error> {
@@ -163,7 +195,48 @@ impl TryFrom<OsString> for Conf<&str> {
     }
 }
 
-impl From<&str> for Conf<&str> {
+impl TryFrom<Cval<&OsStr>> for Cval<&str> {
+    type Error = ConfigParseOperationError;
+
+    fn try_from(value: Cval<&OsStr>) -> Result<Self, Self::Error> {
+        // Validates that the underlying bytes are utf8 encoded. Required for
+        // later safety guarantees.
+        str::from_utf8(value.deref().as_bytes())?;
+        Ok(Self(value.into_inner()))
+    }
+}
+
+impl TryFrom<&Path> for Cval<&str> {
+    type Error = ConfigParseOperationError;
+
+    fn try_from(value: &Path) -> Result<Self, Self::Error> {
+        // try_from(&OsStr) validates that the underlying bytes are utf8
+        // encoded. Required for later safety guarantees.
+        Self::try_from(OsStr::new(value))
+    }
+}
+
+impl TryFrom<PathBuf> for Cval<&str> {
+    type Error = ConfigParseOperationError;
+
+    fn try_from(value: PathBuf) -> Result<Self, Self::Error> {
+        // try_from(&OsString) validates that the underlying bytes are utf8
+        // encoded. Required for later safety guarantees.
+        Self::try_from(OsString::from(value))
+    }
+}
+
+impl TryFrom<Cval<&Path>> for Cval<&str> {
+    type Error = ConfigParseOperationError;
+
+    fn try_from(value: Cval<&Path>) -> Result<Self, Self::Error> {
+        // try_from(Cval<&OsStr>) validates that the underlying bytes are utf8
+        // encoded. Required for later safety guarantees.
+        Self::try_from(<Cval<&OsStr>>::from(value))
+    }
+}
+
+impl From<&str> for Cval<&str> {
     fn from(value: &str) -> Self {
         // The input is already valid utf8. Safety guarantees for later
         // unchecked cast back into &str are fulfilled.
@@ -171,7 +244,7 @@ impl From<&str> for Conf<&str> {
     }
 }
 
-impl From<String> for Conf<&str> {
+impl From<String> for Cval<&str> {
     fn from(value: String) -> Self {
         // The input is already valid utf8. Safety guarantees for later
         // unchecked cast into &str are fulfilled.
@@ -179,23 +252,40 @@ impl From<String> for Conf<&str> {
     }
 }
 
-impl Display for Conf<&str> {
+impl Display for Cval<&str> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.as_ref())
+        write!(f, "{}", self.deref())
     }
 }
 
-impl Replayable for &OsStr {
+impl ICval for &OsStr {
     type Repr = Bytes;
 }
 
-impl AsRef<OsStr> for Conf<&OsStr> {
-    fn as_ref(&self) -> &OsStr {
+impl Deref for Cval<&OsStr> {
+    type Target = OsStr;
+
+    fn deref(&self) -> &Self::Target {
         OsStr::from_bytes(&self.0)
     }
 }
 
-impl TryFrom<&[u8]> for Conf<&OsStr> {
+impl AsRef<OsStr> for Cval<&OsStr> {
+    fn as_ref(&self) -> &OsStr {
+        self.deref()
+    }
+}
+
+impl<T> AsRef<T> for Cval<&OsStr>
+where
+    for<'a> OsStr: AsRef<T>,
+{
+    fn as_ref(&self) -> &T {
+        self.deref().as_ref()
+    }
+}
+
+impl TryFrom<&[u8]> for Cval<&OsStr> {
     type Error = ConfigParseOperationError;
 
     fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
@@ -203,7 +293,7 @@ impl TryFrom<&[u8]> for Conf<&OsStr> {
     }
 }
 
-impl TryFrom<Vec<u8>> for Conf<&OsStr> {
+impl TryFrom<Vec<u8>> for Cval<&OsStr> {
     type Error = ConfigParseOperationError;
 
     fn try_from(value: Vec<u8>) -> Result<Self, Self::Error> {
@@ -211,7 +301,7 @@ impl TryFrom<Vec<u8>> for Conf<&OsStr> {
     }
 }
 
-impl TryFrom<Bytes> for Conf<&OsStr> {
+impl TryFrom<Bytes> for Cval<&OsStr> {
     type Error = ConfigParseOperationError;
 
     fn try_from(value: Bytes) -> Result<Self, Self::Error> {
@@ -219,86 +309,148 @@ impl TryFrom<Bytes> for Conf<&OsStr> {
     }
 }
 
-impl From<&OsStr> for Conf<&OsStr> {
+impl From<&OsStr> for Cval<&OsStr> {
     fn from(value: &OsStr) -> Self {
         value.to_os_string().into()
     }
 }
 
-impl From<OsString> for Conf<&OsStr> {
+impl From<OsString> for Cval<&OsStr> {
     fn from(value: OsString) -> Self {
         Self(value.into_vec().into())
     }
 }
 
-impl From<&str> for Conf<&OsStr> {
+impl From<&str> for Cval<&OsStr> {
     fn from(value: &str) -> Self {
         Self::from(OsStr::new(value))
     }
 }
 
-impl From<String> for Conf<&OsStr> {
+impl From<String> for Cval<&OsStr> {
     fn from(value: String) -> Self {
         Self::from(OsString::from(value))
     }
 }
 
-impl Display for Conf<&OsStr> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.as_ref().display())
+impl From<Cval<&str>> for Cval<&OsStr> {
+    fn from(value: Cval<&str>) -> Self {
+        Self(value.into_inner())
     }
 }
 
-impl Replayable for &Path {
+impl From<&Path> for Cval<&OsStr> {
+    fn from(value: &Path) -> Self {
+        Self::from(OsStr::new(value))
+    }
+}
+
+impl From<PathBuf> for Cval<&OsStr> {
+    fn from(value: PathBuf) -> Self {
+        Self::from(OsString::from(value))
+    }
+}
+
+impl From<Cval<&Path>> for Cval<&OsStr> {
+    fn from(value: Cval<&Path>) -> Self {
+        Self(value.into_inner())
+    }
+}
+
+impl Display for Cval<&OsStr> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.deref().display())
+    }
+}
+
+impl ICval for &Path {
     type Repr = Bytes;
 }
 
-impl AsRef<Path> for Conf<&Path> {
-    fn as_ref(&self) -> &Path {
+impl Deref for Cval<&Path> {
+    type Target = Path;
+
+    fn deref(&self) -> &Self::Target {
         Path::new(OsStr::from_bytes(&self.0))
     }
 }
 
-impl TryFrom<Bytes> for Conf<&Path> {
+impl AsRef<Path> for Cval<&Path> {
+    fn as_ref(&self) -> &Path {
+        self.deref()
+    }
+}
+
+impl<T> AsRef<T> for Cval<&Path>
+where
+    for<'a> Path: AsRef<T>,
+{
+    fn as_ref(&self) -> &T {
+        self.deref().as_ref()
+    }
+}
+
+impl TryFrom<Bytes> for Cval<&Path> {
     type Error = ConfigParseOperationError;
 
     fn try_from(value: Bytes) -> Result<Self, Self::Error> {
+        // Although this always returns Ok right now, implement TryFrom in order
+        // to reserve the ability to enforce a stronger encoding in the future,
+        // more inline with something like OsStr's wtf8 encoding.
         Ok(Self(value))
     }
 }
 
-impl From<&Path> for Conf<&Path> {
+impl From<&OsStr> for Cval<&Path> {
+    fn from(value: &OsStr) -> Self {
+        Self::from(Path::new(value))
+    }
+}
+
+impl From<OsString> for Cval<&Path> {
+    fn from(value: OsString) -> Self {
+        Self::from(PathBuf::from(value))
+    }
+}
+
+impl From<Cval<&OsStr>> for Cval<&Path> {
+    fn from(value: Cval<&OsStr>) -> Self {
+        Self(value.into_inner())
+    }
+}
+
+impl From<&Path> for Cval<&Path> {
     fn from(value: &Path) -> Self {
         value.to_path_buf().into()
     }
 }
 
-impl From<PathBuf> for Conf<&Path> {
+impl From<PathBuf> for Cval<&Path> {
     fn from(value: PathBuf) -> Self {
         Self(value.into_os_string().into_vec().into())
     }
 }
 
-impl Display for Conf<&Path> {
+impl Display for Cval<&Path> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.as_ref().display())
+        write!(f, "{}", self.deref().display())
     }
 }
 
 const BOOLEAN_TRUE: &[&[u8]] = &[b"true", b"enable", b"yes", b"t", b"y"];
 const BOOLEAN_FALSE: &[&[u8]] = &[b"false", b"disable", b"no", b"f", b"n"];
 
-impl Replayable for bool {
+impl ICval for bool {
     type Repr = Self;
 }
 
-impl AsRef<bool> for Conf<bool> {
+impl AsRef<bool> for Cval<bool> {
     fn as_ref(&self) -> &bool {
         &self.0
     }
 }
 
-impl TryFrom<Bytes> for Conf<bool> {
+impl TryFrom<Bytes> for Cval<bool> {
     type Error = ConfigParseOperationError;
 
     fn try_from(value: Bytes) -> Result<Self, Self::Error> {
@@ -314,35 +466,35 @@ impl TryFrom<Bytes> for Conf<bool> {
     }
 }
 
-impl From<bool> for Conf<bool> {
+impl From<bool> for Cval<bool> {
     fn from(value: bool) -> Self {
         Self(value)
     }
 }
 
-impl From<&bool> for Conf<bool> {
+impl From<&bool> for Cval<bool> {
     fn from(value: &bool) -> Self {
         Self(*value)
     }
 }
 
-impl Display for Conf<bool> {
+impl Display for Cval<bool> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
     }
 }
 
-impl Replayable for char {
+impl ICval for char {
     type Repr = Self;
 }
 
-impl AsRef<char> for Conf<char> {
+impl AsRef<char> for Cval<char> {
     fn as_ref(&self) -> &char {
         &self.0
     }
 }
 
-impl TryFrom<Bytes> for Conf<char> {
+impl TryFrom<Bytes> for Cval<char> {
     type Error = ConfigParseOperationError;
 
     fn try_from(value: Bytes) -> Result<Self, Self::Error> {
@@ -356,57 +508,57 @@ impl TryFrom<Bytes> for Conf<char> {
     }
 }
 
-impl From<char> for Conf<char> {
+impl From<char> for Cval<char> {
     fn from(value: char) -> Self {
         Self(value)
     }
 }
 
-impl From<&char> for Conf<char> {
+impl From<&char> for Cval<char> {
     fn from(value: &char) -> Self {
         Self(*value)
     }
 }
 
-impl Display for Conf<char> {
+impl Display for Cval<char> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
     }
 }
 
-macro_rules! impl_replayable_option {
+macro_rules! impl_icval_option {
     ($({$lifetime:tt} for)? $ty:ty) => {
-        impl$(<$lifetime>)? Replayable for Option<$ty> {
-            type Repr = Option<Conf<$ty>>;
+        impl$(<$lifetime>)? ICval for Option<$ty> {
+            type Repr = Option<Cval<$ty>>;
         }
 
-        impl$(<$lifetime>)? Conf<Option<$ty>> {
-            pub fn as_ref(&self) -> Option<&Conf<$ty>> {
+        impl$(<$lifetime>)? Cval<Option<$ty>> {
+            pub fn as_ref(&self) -> Option<&Cval<$ty>> {
                 self.0.as_ref()
             }
         }
 
-        impl$(<$lifetime>)? TryFrom<Bytes> for Conf<Option<$ty>> {
+        impl$(<$lifetime>)? TryFrom<Bytes> for Cval<Option<$ty>> {
             type Error = ConfigParseOperationError;
 
             fn try_from(value: Bytes) -> Result<Self, Self::Error> {
-                Ok(Self(Some(<Conf<$ty>>::try_from(value)?)))
+                Ok(Self(Some(<Cval<$ty>>::try_from(value)?)))
             }
         }
 
-        impl$(<$lifetime>)? From<$ty> for Conf<Option<$ty>> {
+        impl$(<$lifetime>)? From<$ty> for Cval<Option<$ty>> {
             fn from(value: $ty) -> Self {
-                Self(Some(Conf::from(value)))
+                Self(Some(Cval::from(value)))
             }
         }
 
-        impl$(<$lifetime>)? From<Option<$ty>> for Conf<Option<$ty>> {
+        impl$(<$lifetime>)? From<Option<$ty>> for Cval<Option<$ty>> {
             fn from(value: Option<$ty>) -> Self {
-                Self(value.map(Conf::from))
+                Self(value.map(Cval::from))
             }
         }
 
-        impl$(<$lifetime>)? Display for Conf<Option<$ty>> {
+        impl$(<$lifetime>)? Display for Cval<Option<$ty>> {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 if let Some(value) = self.as_ref() {
                     write!(f, "{value}")
@@ -418,25 +570,25 @@ macro_rules! impl_replayable_option {
     };
 }
 
-impl_replayable_option!({'a} for &'a str);
-impl_replayable_option!({'a} for &'a OsStr);
-impl_replayable_option!({'a} for &'a Path);
-impl_replayable_option!(bool);
-impl_replayable_option!(char);
+impl_icval_option!({'a} for &'a str);
+impl_icval_option!({'a} for &'a OsStr);
+impl_icval_option!({'a} for &'a Path);
+impl_icval_option!(bool);
+impl_icval_option!(char);
 
-macro_rules! impl_replayable_integer {
+macro_rules! impl_icval_integer {
     ($int:ty) => {
-        impl Replayable for $int {
+        impl ICval for $int {
             type Repr = Self;
         }
 
-        impl AsRef<$int> for Conf<$int> {
+        impl AsRef<$int> for Cval<$int> {
             fn as_ref(&self) -> &$int {
                 &self.0
             }
         }
 
-        impl TryFrom<Bytes> for Conf<$int> {
+        impl TryFrom<Bytes> for Cval<$int> {
             type Error = ConfigParseOperationError;
 
             fn try_from(value: Bytes) -> Result<Self, Self::Error> {
@@ -444,70 +596,45 @@ macro_rules! impl_replayable_integer {
             }
         }
 
-        impl From<$int> for Conf<$int> {
+        impl From<$int> for Cval<$int> {
             fn from(value: $int) -> Self {
                 Self(value)
             }
         }
 
-        impl From<&$int> for Conf<$int> {
+        impl From<&$int> for Cval<$int> {
             fn from(value: &$int) -> Self {
                 Self(*value)
             }
         }
 
-        impl Display for Conf<$int> {
+        impl Display for Cval<$int> {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 write!(f, "{}", self.0)
             }
         }
 
-        impl_replayable_option!($int);
+        impl_icval_option!($int);
     };
 }
 
-impl_replayable_integer!(u8);
-impl_replayable_integer!(u16);
-impl_replayable_integer!(u32);
-impl_replayable_integer!(u64);
-impl_replayable_integer!(u128);
-impl_replayable_integer!(usize);
+impl_icval_integer!(u8);
+impl_icval_integer!(u16);
+impl_icval_integer!(u32);
+impl_icval_integer!(u64);
+impl_icval_integer!(u128);
+impl_icval_integer!(usize);
 
-impl_replayable_integer!(i8);
-impl_replayable_integer!(i16);
-impl_replayable_integer!(i32);
-impl_replayable_integer!(i64);
-impl_replayable_integer!(i128);
-impl_replayable_integer!(isize);
+impl_icval_integer!(i8);
+impl_icval_integer!(i16);
+impl_icval_integer!(i32);
+impl_icval_integer!(i64);
+impl_icval_integer!(i128);
+impl_icval_integer!(isize);
 
-impl_replayable_integer!(f32);
-impl_replayable_integer!(f64);
+impl_icval_integer!(f32);
+impl_icval_integer!(f64);
 
-impl_replayable_integer!(IpAddr);
-impl_replayable_integer!(Ipv4Addr);
-impl_replayable_integer!(Ipv6Addr);
-
-#[derive(Debug)]
-pub enum ReplayOperation<T: Replayable> {
-    Assign(Conf<T>),
-    AssignIfUndefined(Conf<T>),
-    Add(Conf<T>),
-    Remove(Conf<T>),
-    Reset,
-    Clear,
-}
-impl<T> Clone for ReplayOperation<T>
-where
-    T: Replayable,
-{
-    fn clone(&self) -> Self {
-        match self {
-            Self::Assign(value) => Self::Assign(value.clone()),
-            Self::AssignIfUndefined(value) => Self::AssignIfUndefined(value.clone()),
-            Self::Add(value) => Self::Add(value.clone()),
-            Self::Remove(value) => Self::Remove(value.clone()),
-            Self::Reset => Self::Reset,
-            Self::Clear => Self::Clear,
-        }
-    }
-}
+impl_icval_integer!(IpAddr);
+impl_icval_integer!(Ipv4Addr);
+impl_icval_integer!(Ipv6Addr);

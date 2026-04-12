@@ -1,21 +1,21 @@
 use std::fmt::Display;
 
 use crate::{
-    Conf, ConfigOperation, ReplayOperation, Replayable,
+    ConfigOperation, Cval, ICval, Operation,
     ast::{OPERATOR_ADD, OPERATOR_ASSIGN, OPERATOR_CLEAR},
     header::ConfigHeader,
 };
 
 #[derive(Debug)]
-pub struct ConfigList<T: Replayable> {
+pub struct ConfigList<T: ICval> {
     header: ConfigHeader<T>,
-    default: Vec<Conf<T>>,
-    list: Vec<Conf<T>>,
+    default: Vec<Cval<T>>,
+    list: Vec<Cval<T>>,
 }
 
 impl<T> ConfigList<T>
 where
-    T: Replayable,
+    T: ICval,
 {
     pub const fn new(key: &'static str) -> Self {
         Self {
@@ -27,9 +27,9 @@ where
 
     pub fn new_with_default<'x, X>(key: &'static str, default: &'x [X]) -> Self
     where
-        Conf<T>: From<&'x X>,
+        Cval<T>: From<&'x X>,
     {
-        let default: Vec<_> = default.iter().map(Conf::from).collect();
+        let default: Vec<_> = default.iter().map(Cval::from).collect();
         Self {
             header: ConfigHeader::new(key),
             list: default.clone(),
@@ -49,21 +49,21 @@ where
         self.list.is_empty()
     }
 
-    pub fn get(&self, index: usize) -> Option<&Conf<T>> {
+    pub fn get(&self, index: usize) -> Option<&Cval<T>> {
         self.list.get(index)
     }
 
-    pub fn values(&self) -> impl Iterator<Item = &Conf<T>> {
+    pub fn values(&self) -> impl Iterator<Item = &Cval<T>> {
         self.list.iter()
     }
 }
 
 impl<T> ConfigOperation<T> for ConfigList<T>
 where
-    T: Replayable,
+    T: ICval,
     T::Repr: PartialEq,
 {
-    fn assign<C: Into<Conf<T>>>(&mut self, value: C) {
+    fn assign<C: Into<Cval<T>>>(&mut self, value: C) {
         let value = value.into();
         self.header.history_mut().assign(value.clone());
         self.header.set_modified();
@@ -71,7 +71,7 @@ where
         self.list.push(value);
     }
 
-    fn assign_if_undefined<C: Into<Conf<T>>>(&mut self, value: C) {
+    fn assign_if_undefined<C: Into<Cval<T>>>(&mut self, value: C) {
         let value = value.into();
         if !self.is_defined() {
             self.header.set_modified();
@@ -80,14 +80,14 @@ where
         self.header.history_mut().assign_if_undefined(value);
     }
 
-    fn add<C: Into<Conf<T>>>(&mut self, value: C) {
+    fn add<C: Into<Cval<T>>>(&mut self, value: C) {
         let value = value.into();
         self.header.history_mut().add(value.clone());
         self.header.set_modified();
         self.list.push(value);
     }
 
-    fn remove<C: Into<Conf<T>>>(&mut self, value: C) {
+    fn remove<C: Into<Cval<T>>>(&mut self, value: C) {
         let value = value.into();
         self.list.retain(|x| {
             let remove = x == &value;
@@ -120,7 +120,7 @@ where
         !self.list.is_empty()
     }
 
-    fn history<'a>(&'a self) -> impl Iterator<Item = &'a ReplayOperation<T>>
+    fn history<'a>(&'a self) -> impl Iterator<Item = &'a Operation<T>>
     where
         T: 'a,
     {
@@ -130,7 +130,7 @@ where
 
 impl<T> Clone for ConfigList<T>
 where
-    T: Replayable,
+    T: ICval,
 {
     fn clone(&self) -> Self {
         Self {
@@ -143,8 +143,8 @@ where
 
 impl<T> Display for ConfigList<T>
 where
-    T: Replayable,
-    Conf<T>: Display,
+    T: ICval,
+    Cval<T>: Display,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut values = self.values();

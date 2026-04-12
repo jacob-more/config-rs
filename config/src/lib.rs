@@ -6,16 +6,16 @@ use thiserror::Error;
 pub mod ast;
 pub mod ext;
 
+pub mod cval;
 pub(crate) mod header;
 pub(crate) mod history;
-pub mod replay;
 
 mod access_control_list;
 mod list;
 mod set;
 mod value;
 
-pub use replay::*;
+pub use cval::*;
 
 pub use access_control_list::*;
 pub use list::*;
@@ -27,6 +27,30 @@ pub mod derive {
 }
 
 use crate::ast::{AstEntry, AstGroup, AstOperation, AstTree};
+#[derive(Debug)]
+pub enum Operation<T: ICval> {
+    Assign(Cval<T>),
+    AssignIfUndefined(Cval<T>),
+    Add(Cval<T>),
+    Remove(Cval<T>),
+    Reset,
+    Clear,
+}
+impl<T> Clone for Operation<T>
+where
+    T: ICval,
+{
+    fn clone(&self) -> Self {
+        match self {
+            Self::Assign(value) => Self::Assign(value.clone()),
+            Self::AssignIfUndefined(value) => Self::AssignIfUndefined(value.clone()),
+            Self::Add(value) => Self::Add(value.clone()),
+            Self::Remove(value) => Self::Remove(value.clone()),
+            Self::Reset => Self::Reset,
+            Self::Clear => Self::Clear,
+        }
+    }
+}
 
 #[derive(Debug, Error)]
 enum ReprParseConfigOperationError {
@@ -112,26 +136,26 @@ pub trait ConfigGroup {
 
 pub trait ConfigOperation<T>
 where
-    T: Replayable,
+    T: ICval,
 {
-    fn assign<C: Into<Conf<T>>>(&mut self, value: C);
-    fn assign_if_undefined<C: Into<Conf<T>>>(&mut self, value: C);
-    fn add<C: Into<Conf<T>>>(&mut self, value: C);
-    fn remove<C: Into<Conf<T>>>(&mut self, value: C);
+    fn assign<C: Into<Cval<T>>>(&mut self, value: C);
+    fn assign_if_undefined<C: Into<Cval<T>>>(&mut self, value: C);
+    fn add<C: Into<Cval<T>>>(&mut self, value: C);
+    fn remove<C: Into<Cval<T>>>(&mut self, value: C);
     fn reset(&mut self);
     fn clear(&mut self);
 
     fn is_default(&self) -> bool;
     fn is_defined(&self) -> bool;
-    fn history<'a>(&'a self) -> impl Iterator<Item = &'a ReplayOperation<T>>
+    fn history<'a>(&'a self) -> impl Iterator<Item = &'a Operation<T>>
     where
         T: 'a;
 }
 
 pub trait ConfigOperationExt<T>: ConfigOperation<T>
 where
-    T: Replayable,
-    Conf<T>: TryFrom<bytes::Bytes, Error = ConfigParseOperationError>,
+    T: ICval,
+    Cval<T>: TryFrom<bytes::Bytes, Error = ConfigParseOperationError>,
 {
     fn parse_ast_entry(
         &mut self,
@@ -141,26 +165,26 @@ where
         let _ = key; // key is unused here, but required for the trait.
 
         match operation {
-            AstOperation::Assign(value) => self.assign(Conf::try_from(value)?),
+            AstOperation::Assign(value) => self.assign(Cval::try_from(value)?),
             AstOperation::AssignIfUndefined(value) => {
-                self.assign_if_undefined(Conf::try_from(value)?)
+                self.assign_if_undefined(Cval::try_from(value)?)
             }
-            AstOperation::Add(value) => self.add(Conf::try_from(value)?),
-            AstOperation::Remove(value) => self.remove(Conf::try_from(value)?),
+            AstOperation::Add(value) => self.add(Cval::try_from(value)?),
+            AstOperation::Remove(value) => self.remove(Cval::try_from(value)?),
             AstOperation::Reset => self.reset(),
             AstOperation::Clear => self.clear(),
         }
         Ok(())
     }
 
-    fn apply(&mut self, event: ReplayOperation<T>) {
+    fn apply(&mut self, event: Operation<T>) {
         match event {
-            ReplayOperation::Assign(value) => self.assign(value),
-            ReplayOperation::AssignIfUndefined(value) => self.assign_if_undefined(value),
-            ReplayOperation::Add(value) => self.add(value),
-            ReplayOperation::Remove(value) => self.remove(value),
-            ReplayOperation::Reset => self.reset(),
-            ReplayOperation::Clear => self.clear(),
+            Operation::Assign(value) => self.assign(value),
+            Operation::AssignIfUndefined(value) => self.assign_if_undefined(value),
+            Operation::Add(value) => self.add(value),
+            Operation::Remove(value) => self.remove(value),
+            Operation::Reset => self.reset(),
+            Operation::Clear => self.clear(),
         }
     }
 
@@ -171,8 +195,8 @@ where
 impl<C, T> ConfigOperationExt<T> for C
 where
     C: ConfigOperation<T>,
-    T: Replayable,
-    Conf<T>: TryFrom<bytes::Bytes, Error = ConfigParseOperationError>,
+    T: ICval,
+    Cval<T>: TryFrom<bytes::Bytes, Error = ConfigParseOperationError>,
 {
 }
 

@@ -1,13 +1,13 @@
-use crate::{Conf, ReplayOperation, Replayable};
+use crate::{Cval, ICval, Operation};
 
 #[derive(Debug)]
-pub struct History<T: Replayable> {
-    history: Vec<ReplayOperation<T>>,
+pub struct History<T: ICval> {
+    history: Vec<Operation<T>>,
 }
 
 impl<T> History<T>
 where
-    T: Replayable,
+    T: ICval,
 {
     pub const fn new() -> Self {
         Self {
@@ -15,34 +15,34 @@ where
         }
     }
 
-    pub fn assign(&mut self, value: Conf<T>) {
+    pub fn assign(&mut self, value: Cval<T>) {
         self.history.clear();
-        self.history.push(ReplayOperation::Assign(value));
+        self.history.push(Operation::Assign(value));
     }
 
-    pub fn assign_if_undefined(&mut self, value: Conf<T>) {
-        self.history.push(ReplayOperation::AssignIfUndefined(value));
+    pub fn assign_if_undefined(&mut self, value: Cval<T>) {
+        self.history.push(Operation::AssignIfUndefined(value));
     }
 
-    pub fn add(&mut self, value: Conf<T>) {
-        self.history.push(ReplayOperation::Add(value.clone()));
+    pub fn add(&mut self, value: Cval<T>) {
+        self.history.push(Operation::Add(value.clone()));
     }
 
-    pub fn remove(&mut self, value: Conf<T>) {
-        self.history.push(ReplayOperation::Remove(value));
+    pub fn remove(&mut self, value: Cval<T>) {
+        self.history.push(Operation::Remove(value));
     }
 
     pub fn reset(&mut self) {
         self.history.clear();
-        self.history.push(ReplayOperation::Reset);
+        self.history.push(Operation::Reset);
     }
 
     pub fn clear(&mut self) {
         self.history.clear();
-        self.history.push(ReplayOperation::Clear);
+        self.history.push(Operation::Clear);
     }
 
-    pub fn history<'a>(&'a self) -> impl Iterator<Item = &'a ReplayOperation<T>>
+    pub fn history<'a>(&'a self) -> impl Iterator<Item = &'a Operation<T>>
     where
         T: 'a,
     {
@@ -52,7 +52,7 @@ where
 
 impl<T> Default for History<T>
 where
-    T: Replayable,
+    T: ICval,
 {
     fn default() -> Self {
         Self::new()
@@ -61,7 +61,7 @@ where
 
 impl<T> Clone for History<T>
 where
-    T: Replayable,
+    T: ICval,
 {
     fn clone(&self) -> Self {
         Self {

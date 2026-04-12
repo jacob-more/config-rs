@@ -1,7 +1,7 @@
 use std::fmt::Display;
 
 use crate::{
-    Conf, ConfigOperation, ReplayOperation, Replayable,
+    ConfigOperation, Cval, ICval, Operation,
     ast::{OPERATOR_ADD, OPERATOR_ASSIGN, OPERATOR_CLEAR, OPERATOR_REMOVE},
     header::ConfigHeader,
 };
@@ -13,15 +13,15 @@ pub enum AclAction {
 }
 
 #[derive(Debug)]
-pub struct ConfigAcl<T: Replayable> {
+pub struct ConfigAcl<T: ICval> {
     header: ConfigHeader<T>,
-    default: Vec<(AclAction, Conf<T>)>,
-    acl: Vec<(AclAction, Conf<T>)>,
+    default: Vec<(AclAction, Cval<T>)>,
+    acl: Vec<(AclAction, Cval<T>)>,
 }
 
 impl<T> ConfigAcl<T>
 where
-    T: Replayable,
+    T: ICval,
 {
     pub const fn new(key: &'static str) -> Self {
         Self {
@@ -33,11 +33,11 @@ where
 
     pub fn new_with_default<'x, X>(key: &'static str, default: &'x [(AclAction, X)]) -> Self
     where
-        Conf<T>: From<&'x X>,
+        Cval<T>: From<&'x X>,
     {
         let default: Vec<_> = default
             .iter()
-            .map(|(action, x)| (*action, Conf::from(x)))
+            .map(|(action, x)| (*action, Cval::from(x)))
             .collect();
         Self {
             header: ConfigHeader::new(key),
@@ -58,22 +58,22 @@ where
         self.acl.is_empty()
     }
 
-    pub fn get(&self, index: usize) -> Option<(&AclAction, &Conf<T>)> {
+    pub fn get(&self, index: usize) -> Option<(&AclAction, &Cval<T>)> {
         self.acl.get(index).map(|(action, x)| (action, x))
     }
 
-    pub fn values(&self) -> impl Iterator<Item = (&AclAction, &Conf<T>)> {
+    pub fn values(&self) -> impl Iterator<Item = (&AclAction, &Cval<T>)> {
         self.acl.iter().map(|(action, x)| (action, x))
     }
 
-    pub fn allowed(&self) -> impl Iterator<Item = &Conf<T>> {
+    pub fn allowed(&self) -> impl Iterator<Item = &Cval<T>> {
         self.acl
             .iter()
             .filter(|(action, _)| matches!(action, AclAction::Allow))
             .map(|(_, x)| x)
     }
 
-    pub fn denied(&self) -> impl Iterator<Item = &Conf<T>> {
+    pub fn denied(&self) -> impl Iterator<Item = &Cval<T>> {
         self.acl
             .iter()
             .filter(|(action, _)| matches!(action, AclAction::Deny))
@@ -83,10 +83,10 @@ where
 
 impl<T> ConfigOperation<T> for ConfigAcl<T>
 where
-    T: Replayable,
+    T: ICval,
     T::Repr: PartialEq,
 {
-    fn assign<C: Into<Conf<T>>>(&mut self, value: C) {
+    fn assign<C: Into<Cval<T>>>(&mut self, value: C) {
         let value = value.into();
         self.header.history_mut().assign(value.clone());
         self.header.set_modified();
@@ -94,7 +94,7 @@ where
         self.acl.push((AclAction::Allow, value));
     }
 
-    fn assign_if_undefined<C: Into<Conf<T>>>(&mut self, value: C) {
+    fn assign_if_undefined<C: Into<Cval<T>>>(&mut self, value: C) {
         let value = value.into();
         if !self.is_defined() {
             self.header.set_modified();
@@ -103,7 +103,7 @@ where
         self.header.history_mut().assign_if_undefined(value);
     }
 
-    fn add<C: Into<Conf<T>>>(&mut self, value: C) {
+    fn add<C: Into<Cval<T>>>(&mut self, value: C) {
         let value = value.into();
         self.header.history_mut().add(value.clone());
         self.header.set_modified();
@@ -112,7 +112,7 @@ where
         self.acl.push((AclAction::Allow, value));
     }
 
-    fn remove<C: Into<Conf<T>>>(&mut self, value: C) {
+    fn remove<C: Into<Cval<T>>>(&mut self, value: C) {
         let value = value.into();
         self.header.history_mut().remove(value.clone());
         self.header.set_modified();
@@ -142,7 +142,7 @@ where
         !self.acl.is_empty()
     }
 
-    fn history<'a>(&'a self) -> impl Iterator<Item = &'a ReplayOperation<T>>
+    fn history<'a>(&'a self) -> impl Iterator<Item = &'a Operation<T>>
     where
         T: 'a,
     {
@@ -152,7 +152,7 @@ where
 
 impl<T> Clone for ConfigAcl<T>
 where
-    T: Replayable,
+    T: ICval,
 {
     fn clone(&self) -> Self {
         Self {
@@ -165,8 +165,8 @@ where
 
 impl<T> Display for ConfigAcl<T>
 where
-    T: Replayable,
-    Conf<T>: Display,
+    T: ICval,
+    Cval<T>: Display,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut values = self.values();
