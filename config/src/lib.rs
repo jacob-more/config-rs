@@ -1,4 +1,4 @@
-use std::{ffi::OsStr, fmt::Debug, os::unix::ffi::OsStrExt};
+use std::{collections::HashMap, ffi::OsStr, fmt::Debug, os::unix::ffi::OsStrExt};
 
 use bytes::Bytes;
 use thiserror::Error;
@@ -59,22 +59,36 @@ impl_from_config_parse_error!(std::net::AddrParseError);
 
 #[derive(Debug, Error)]
 pub enum ConfigParseError {
-    #[error("{} is not a valid operation key although it might be a valid group key", .0.display_key())]
-    UnknownOperationKey(AstEntry),
-    #[error("{} is not a valid group key although it might be a valid operation key", .0.display_key())]
-    UnknownGroupKey(AstEntry),
     #[error("{} is not a valid key", .0.display_key())]
     UnknownKey(AstEntry),
+    #[error("{} is not a valid group key although it might be a valid operation key", .0.display_key())]
+    UnknownGroupKey(AstEntry),
+    #[error("{} is not a valid operation key although it might be a valid group key", .0.display_key())]
+    UnknownOperationKey(AstEntry),
+    #[error(transparent)]
+    Group(#[from] ConfigParseGroupError),
+    #[error(transparent)]
+    Operation(#[from] ConfigParseOperationError),
 }
 
 #[derive(Debug, Error)]
 pub enum ConfigParseGroupError {
-    #[error("{} is not a valid operation key although it might be a valid group key for group {}", .entry.display_key(), OsStr::from_bytes(.group).display())]
-    UnknownOperationKey { group: Bytes, entry: AstEntry },
-    #[error("{} is not a valid group key although it might be a valid operation key for group {}", .entry.display_key(), OsStr::from_bytes(.group).display())]
-    UnknownGroupKey { group: Bytes, entry: AstEntry },
     #[error("{} is not a valid key for group {}", .entry.display_key(), OsStr::from_bytes(.group).display())]
     UnknownKey { group: Bytes, entry: AstEntry },
+    #[error("{} is not a valid group key although it might be a valid operation key for group {}", .entry.display_key(), OsStr::from_bytes(.group).display())]
+    UnknownGroupKey { group: Bytes, entry: AstEntry },
+    #[error("{} is not a valid operation key although it might be a valid group key for group {}", .entry.display_key(), OsStr::from_bytes(.group).display())]
+    UnknownOperationKey { group: Bytes, entry: AstEntry },
+    #[error("error in group {}: {error}", OsStr::from_bytes(.group).display())]
+    Group {
+        group: Bytes,
+        error: Box<ConfigParseGroupError>,
+    },
+    #[error("error in group {}: {error}", OsStr::from_bytes(.group).display())]
+    Operation {
+        group: Bytes,
+        error: ConfigParseOperationError,
+    },
 }
 
 pub trait Config {
@@ -87,6 +101,7 @@ pub trait Config {
 pub trait ConfigGroup {
     type Err;
 
+    fn new(key: bytes::Bytes) -> Self;
     fn parse_ast_group(&mut self, key: bytes::Bytes, group: AstGroup) -> Result<(), Self::Err>;
     fn replay(&mut self, other: &Self);
 }
@@ -155,6 +170,45 @@ where
     T: Replayable,
     Conf<T>: TryFrom<bytes::Bytes, Error = ConfigParseOperationError>,
 {
+}
+
+impl<C> ConfigGroup for HashMap<Bytes, C>
+where
+    C: ConfigGroup<Err = ConfigParseGroupError>,
+{
+    type Err = ConfigParseGroupError;
+
+    fn new(_key: bytes::Bytes) -> Self {
+        Self::default()
+    }
+
+    fn parse_ast_group(&mut self, key: bytes::Bytes, group: AstGroup) -> Result<(), Self::Err> {
+        let parent_group = key;
+        for entry in group.into_entries() {
+            match entry {
+                AstEntry::Group { key, group } => {
+                    self.entry(key.clone())
+                        .or_insert_with(|| ConfigGroup::new(key.clone()))
+                        .parse_ast_group(key, group)?;
+                }
+                AstEntry::Operation { key, operation } => {
+                    return Err(Self::Err::UnknownOperationKey {
+                        group: parent_group,
+                        entry: AstEntry::Operation { key, operation },
+                    });
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn replay(&mut self, other: &Self) {
+        for (key, group) in other.iter() {
+            self.entry(key.clone())
+                .or_insert_with(|| ConfigGroup::new(key.clone()))
+                .replay(group);
+        }
+    }
 }
 
 #[cfg(test)]
