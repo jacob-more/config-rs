@@ -1,7 +1,7 @@
 use std::{collections::HashSet, fmt::Display, hash::Hash};
 
 use crate::{
-    Conf, Config, ReplayOperation, Replayable,
+    Conf, ConfigOperation, ReplayOperation, Replayable,
     ast::{OPERATOR_ADD, OPERATOR_ASSIGN, OPERATOR_CLEAR},
     header::ConfigHeader,
 };
@@ -55,7 +55,7 @@ where
     }
 }
 
-impl<T> Config<T> for ConfigSet<T>
+impl<T> ConfigOperation<T> for ConfigSet<T>
 where
     T: Replayable,
     T::Repr: Hash + Eq,

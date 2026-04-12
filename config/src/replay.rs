@@ -10,7 +10,7 @@ use std::{
 
 use bytes::Bytes;
 
-use crate::{ConfigParseError, ReprConfigParseError};
+use crate::{ConfigParseOperationError, ReprParseConfigOperationError};
 
 pub trait Replayable {
     type Repr: Debug + Clone;
@@ -112,7 +112,7 @@ impl AsRef<str> for Conf<&str> {
 }
 
 impl TryFrom<&[u8]> for Conf<&str> {
-    type Error = ConfigParseError;
+    type Error = ConfigParseOperationError;
 
     fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
         // Validates that the underlying bytes are utf8 encoded. Required for
@@ -123,7 +123,7 @@ impl TryFrom<&[u8]> for Conf<&str> {
 }
 
 impl TryFrom<Vec<u8>> for Conf<&str> {
-    type Error = ConfigParseError;
+    type Error = ConfigParseOperationError;
 
     fn try_from(value: Vec<u8>) -> Result<Self, Self::Error> {
         // try_from(Bytes) validates that the underlying bytes are utf8 encoded.
@@ -133,7 +133,7 @@ impl TryFrom<Vec<u8>> for Conf<&str> {
 }
 
 impl TryFrom<Bytes> for Conf<&str> {
-    type Error = ConfigParseError;
+    type Error = ConfigParseOperationError;
 
     fn try_from(value: Bytes) -> Result<Self, Self::Error> {
         // Validates that the underlying bytes are utf8 encoded. Required for
@@ -144,7 +144,7 @@ impl TryFrom<Bytes> for Conf<&str> {
 }
 
 impl TryFrom<&OsStr> for Conf<&str> {
-    type Error = ConfigParseError;
+    type Error = ConfigParseOperationError;
 
     fn try_from(value: &OsStr) -> Result<Self, Self::Error> {
         // try_from(&[u8]) validates that the underlying bytes are utf8 encoded.
@@ -154,7 +154,7 @@ impl TryFrom<&OsStr> for Conf<&str> {
 }
 
 impl TryFrom<OsString> for Conf<&str> {
-    type Error = ConfigParseError;
+    type Error = ConfigParseOperationError;
 
     fn try_from(value: OsString) -> Result<Self, Self::Error> {
         // try_from(Vec<u8>) validates that the underlying bytes are utf8
@@ -196,7 +196,7 @@ impl AsRef<OsStr> for Conf<&OsStr> {
 }
 
 impl TryFrom<&[u8]> for Conf<&OsStr> {
-    type Error = ConfigParseError;
+    type Error = ConfigParseOperationError;
 
     fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
         Ok(Self(value.to_vec().into()))
@@ -204,7 +204,7 @@ impl TryFrom<&[u8]> for Conf<&OsStr> {
 }
 
 impl TryFrom<Vec<u8>> for Conf<&OsStr> {
-    type Error = ConfigParseError;
+    type Error = ConfigParseOperationError;
 
     fn try_from(value: Vec<u8>) -> Result<Self, Self::Error> {
         Self::try_from(Bytes::from(value))
@@ -212,7 +212,7 @@ impl TryFrom<Vec<u8>> for Conf<&OsStr> {
 }
 
 impl TryFrom<Bytes> for Conf<&OsStr> {
-    type Error = ConfigParseError;
+    type Error = ConfigParseOperationError;
 
     fn try_from(value: Bytes) -> Result<Self, Self::Error> {
         Ok(Self(value))
@@ -260,7 +260,7 @@ impl AsRef<Path> for Conf<&Path> {
 }
 
 impl TryFrom<Bytes> for Conf<&Path> {
-    type Error = ConfigParseError;
+    type Error = ConfigParseOperationError;
 
     fn try_from(value: Bytes) -> Result<Self, Self::Error> {
         Ok(Self(value))
@@ -299,7 +299,7 @@ impl AsRef<bool> for Conf<bool> {
 }
 
 impl TryFrom<Bytes> for Conf<bool> {
-    type Error = ConfigParseError;
+    type Error = ConfigParseOperationError;
 
     fn try_from(value: Bytes) -> Result<Self, Self::Error> {
         if BOOLEAN_TRUE.iter().any(|x| x.eq_ignore_ascii_case(&value)) {
@@ -307,7 +307,9 @@ impl TryFrom<Bytes> for Conf<bool> {
         } else if BOOLEAN_FALSE.iter().any(|x| x.eq_ignore_ascii_case(&value)) {
             Ok(Self(false))
         } else {
-            Err(ConfigParseError(ReprConfigParseError::ParseBoolean))
+            Err(ConfigParseOperationError(
+                ReprParseConfigOperationError::ParseBoolean,
+            ))
         }
     }
 }
@@ -341,13 +343,15 @@ impl AsRef<char> for Conf<char> {
 }
 
 impl TryFrom<Bytes> for Conf<char> {
-    type Error = ConfigParseError;
+    type Error = ConfigParseOperationError;
 
     fn try_from(value: Bytes) -> Result<Self, Self::Error> {
         let value = str::from_utf8(&value)?;
         match (value.chars().next(), value.chars().next()) {
             (Some(character), None) => Ok(Self(character)),
-            (_, _) => Err(ConfigParseError(ReprConfigParseError::ParseChar)),
+            (_, _) => Err(ConfigParseOperationError(
+                ReprParseConfigOperationError::ParseChar,
+            )),
         }
     }
 }
@@ -383,7 +387,7 @@ macro_rules! impl_replayable_option {
         }
 
         impl$(<$lifetime>)? TryFrom<Bytes> for Conf<Option<$ty>> {
-            type Error = ConfigParseError;
+            type Error = ConfigParseOperationError;
 
             fn try_from(value: Bytes) -> Result<Self, Self::Error> {
                 Ok(Self(Some(<Conf<$ty>>::try_from(value)?)))
@@ -433,7 +437,7 @@ macro_rules! impl_replayable_integer {
         }
 
         impl TryFrom<Bytes> for Conf<$int> {
-            type Error = ConfigParseError;
+            type Error = ConfigParseOperationError;
 
             fn try_from(value: Bytes) -> Result<Self, Self::Error> {
                 Ok(Self(str::from_utf8(&value)?.parse()?))

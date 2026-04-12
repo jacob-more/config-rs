@@ -1,7 +1,7 @@
 use std::fmt::Display;
 
 use crate::{
-    Conf, Config, ReplayOperation, Replayable,
+    Conf, ConfigOperation, ReplayOperation, Replayable,
     ast::{OPERATOR_ADD, OPERATOR_ASSIGN, OPERATOR_CLEAR},
     header::ConfigHeader,
 };
@@ -58,7 +58,7 @@ where
     }
 }
 
-impl<T> Config<T> for ConfigList<T>
+impl<T> ConfigOperation<T> for ConfigList<T>
 where
     T: Replayable,
     T::Repr: PartialEq,

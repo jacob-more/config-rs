@@ -21,10 +21,10 @@ pub use list::*;
 pub use set::*;
 pub use value::*;
 
-use crate::ast::AstOperation;
+use crate::ast::{AstGroup, AstOperation, AstTree};
 
 #[derive(Debug, Error)]
-enum ReprConfigParseError {
+enum ReprParseConfigOperationError {
     #[error(transparent)]
     ParseInteger(#[from] std::num::ParseIntError),
     #[error(transparent)]
@@ -41,12 +41,12 @@ enum ReprConfigParseError {
 
 #[derive(Debug, Error)]
 #[error(transparent)]
-pub struct ConfigParseError(#[from] ReprConfigParseError);
+pub struct ConfigParseOperationError(#[from] ReprParseConfigOperationError);
 macro_rules! impl_from_config_parse_error {
     ($ty:ty) => {
-        impl From<$ty> for ConfigParseError {
+        impl From<$ty> for ConfigParseOperationError {
             fn from(value: $ty) -> Self {
-                ConfigParseError(ReprConfigParseError::from(value))
+                ConfigParseOperationError(ReprParseConfigOperationError::from(value))
             }
         }
     };
@@ -56,7 +56,22 @@ impl_from_config_parse_error!(std::num::ParseFloatError);
 impl_from_config_parse_error!(std::str::Utf8Error);
 impl_from_config_parse_error!(std::net::AddrParseError);
 
-pub trait Config<T>
+pub trait Config {
+    type Err;
+
+    fn parse_from_ast(&mut self, ast: AstTree) -> Result<(), Self::Err>;
+    fn replay(&mut self, other: &Self);
+}
+
+pub trait ConfigGroup {
+    type Err;
+
+    fn parse_from_ast_group(&mut self, key: bytes::Bytes, group: AstGroup)
+    -> Result<(), Self::Err>;
+    fn replay(&mut self, other: &Self);
+}
+
+pub trait ConfigOperation<T>
 where
     T: Replayable,
 {
@@ -74,12 +89,18 @@ where
         T: 'a;
 }
 
-pub trait ConfigExt<T>: Config<T>
+pub trait ConfigOperationExt<T>: ConfigOperation<T>
 where
     T: Replayable,
-    Conf<T>: TryFrom<bytes::Bytes, Error = ConfigParseError>,
+    Conf<T>: TryFrom<bytes::Bytes, Error = ConfigParseOperationError>,
 {
-    fn parse_ast_entry(&mut self, operation: AstOperation) -> Result<(), ConfigParseError> {
+    fn parse_ast_entry(
+        &mut self,
+        key: bytes::Bytes,
+        operation: AstOperation,
+    ) -> Result<(), ConfigParseOperationError> {
+        let _ = key; // key is unused here, but required for the trait.
+
         match operation {
             AstOperation::Assign(value) => self.assign(Conf::try_from(value)?),
             AstOperation::AssignIfUndefined(value) => {
@@ -108,11 +129,11 @@ where
         other.history().cloned().for_each(|event| self.apply(event));
     }
 }
-impl<C, T> ConfigExt<T> for C
+impl<C, T> ConfigOperationExt<T> for C
 where
-    C: Config<T>,
+    C: ConfigOperation<T>,
     T: Replayable,
-    Conf<T>: TryFrom<bytes::Bytes, Error = ConfigParseError>,
+    Conf<T>: TryFrom<bytes::Bytes, Error = ConfigParseOperationError>,
 {
 }
 
