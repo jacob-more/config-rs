@@ -215,6 +215,11 @@ impl ConfigFieldAttributes {
 
         for attribute in &field.attrs {
             if matches!(attribute.style, AttrStyle::Outer)
+                && let Meta::Path(path) = &attribute.meta
+                && path.is_ident("group_key")
+            {
+                parser = Some(FieldType::GroupKey);
+            } else if matches!(attribute.style, AttrStyle::Outer)
                 && let Meta::List(meta_list) = &attribute.meta
                 && meta_list.path.is_ident("key")
             {

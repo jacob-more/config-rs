@@ -6,7 +6,10 @@ use crate::field::{ConfigField, FieldType};
 
 pub(crate) mod field;
 
-#[proc_macro_derive(Config, attributes(key, default, lazy_lock, exhaustive, parse))]
+#[proc_macro_derive(
+    Config,
+    attributes(key, group_key, default, lazy_lock, exhaustive, parse)
+)]
 pub fn config(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let ast = syn::parse_macro_input!(input as DeriveInput);
     derive_config(ast).into()
@@ -20,7 +23,10 @@ fn derive_config(ast: DeriveInput) -> proc_macro2::TokenStream {
     }
 }
 
-#[proc_macro_derive(ConfigGroup, attributes(key, default, lazy_lock, exhaustive, parse))]
+#[proc_macro_derive(
+    ConfigGroup,
+    attributes(key, group_key, default, lazy_lock, exhaustive, parse)
+)]
 pub fn config_group(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let ast = syn::parse_macro_input!(input as DeriveInput);
     derive_config_group(ast).into()
@@ -34,7 +40,10 @@ fn derive_config_group(ast: DeriveInput) -> proc_macro2::TokenStream {
     }
 }
 
-#[proc_macro_derive(ConfigDefault, attributes(key, default, lazy_lock, exhaustive, parse))]
+#[proc_macro_derive(
+    ConfigDefault,
+    attributes(key, group_key, default, lazy_lock, exhaustive, parse)
+)]
 pub fn config_default(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let ast = syn::parse_macro_input!(input as DeriveInput);
     derive_config_default(ast).into()
@@ -48,7 +57,10 @@ fn derive_config_default(ast: DeriveInput) -> proc_macro2::TokenStream {
     }
 }
 
-#[proc_macro_derive(ConfigDisplay, attributes(key, default, lazy_lock, exhaustive, parse))]
+#[proc_macro_derive(
+    ConfigDisplay,
+    attributes(key, group_key, default, lazy_lock, exhaustive, parse)
+)]
 pub fn config_display(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let ast = syn::parse_macro_input!(input as DeriveInput);
     derive_config_display(ast).into()
