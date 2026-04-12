@@ -101,44 +101,56 @@ impl<'a> ConfigStruct<'a> {
         }
     }
 
-    fn generate_impl_default(&self) -> TokenStream {
-        let struct_ident = &self.data.ident;
-        let idents = self.fields.iter().map(|f| &f.ident);
-        let constant_statement_default = self
-            .fields
+    fn generate_new_body(&self) -> TokenStream {
+        let fields_vec = self.fields_with_ident();
+        let fields = fields_vec
             .iter()
-            .map(|field| field.constant_statement_default());
-        let copy_default = self.fields.iter().map(|f| f.expr_copy_default());
-        let fn_default = match &self.data_struct.fields {
-            Fields::Named(_) => quote! {
-                fn default() -> Self {
-                    #(#constant_statement_default)*
+            .map(|(f, i)| (f, i, &f.field.ty, f.literal_bytes()));
 
-                    Self {
-                        #(#idents: #copy_default),*
-                    }
+        let ident = fields.clone().map(|(_, ident, _, _)| ident);
+        let instantiate_field =
+            fields
+                .clone()
+                .map(|(f, _, ty, byte_literal)| match f.attributes.parser {
+                    ConfigParser::GroupKey => quote! { key },
+                    ConfigParser::Operation => f.expr_copy_default(),
+                    ConfigParser::Group => quote! {
+                        <#ty as ::config::ConfigGroup>::new(
+                            ::bytes::Bytes::from(#byte_literal.as_slice())
+                        )
+                    },
+                });
+        let default_constant = fields
+            .filter(|(f, _, _, _)| matches!(f.attributes.parser, ConfigParser::Operation))
+            .map(|(f, _, _, _)| f.constant_statement_default());
+
+        match &self.data_struct.fields {
+            Fields::Named(_) => quote! {
+                #(#default_constant)*
+                Self {
+                    #(#ident: #instantiate_field),*
                 }
             },
             Fields::Unnamed(_) => quote! {
-                fn default() -> Self {
-                    #(#constant_statement_default)*
-
-                    Self(
-                        #(#copy_default),*
-                    )
-                }
+                #(#default_constant)*
+                Self(
+                    #(#instantiate_field),*
+                )
             },
             Fields::Unit => quote! {
-                fn default() -> Self {
-                    #(#constant_statement_default)*
-
-                    Self
-                }
+                Self
             },
-        };
+        }
+    }
+
+    fn generate_impl_default(&self) -> TokenStream {
+        let struct_ident = &self.data.ident;
+        let body = self.generate_new_body();
         quote! {
             impl ::core::default::Default for #struct_ident {
-                #fn_default
+                fn default() -> Self {
+                    #body
+                }
             }
         }
     }
@@ -149,7 +161,11 @@ impl<'a> ConfigStruct<'a> {
 
         let groups = fields
             .iter()
-            .filter(|(f, _)| matches!(f.attributes.parser, ConfigParser::Group(_)));
+            .filter(|(f, _)| matches!(f.attributes.parser, ConfigParser::Group));
+        let operations = fields
+            .iter()
+            .filter(|(f, _)| matches!(f.attributes.parser, ConfigParser::Operation));
+
         let group_byte_constants = groups.clone().map(|(f, _)| f.constant_statement_bytes());
         let group_key = groups.clone().map(|(f, _)| f.ident_bytes());
         let err_group_key = group_key.clone();
@@ -157,9 +173,6 @@ impl<'a> ConfigStruct<'a> {
             .clone()
             .map(|(_, field_ident)| quote! { #field_ident });
 
-        let operations = fields
-            .iter()
-            .filter(|(f, _)| matches!(f.attributes.parser, ConfigParser::Operation(_)));
         let operation_byte_constants = operations
             .clone()
             .map(|(f, _)| f.constant_statement_bytes());
@@ -255,7 +268,13 @@ impl<'a> ConfigStruct<'a> {
 
         let groups = fields
             .iter()
-            .filter(|(f, _)| matches!(f.attributes.parser, ConfigParser::Group(_)));
+            .filter(|(f, _)| matches!(f.attributes.parser, ConfigParser::Group));
+        let operations = fields
+            .iter()
+            .filter(|(f, _)| matches!(f.attributes.parser, ConfigParser::Operation));
+
+        let new_body = self.generate_new_body();
+
         let group_byte_constants = groups.clone().map(|(f, _)| f.constant_statement_bytes());
         let group_key = groups.clone().map(|(f, _)| f.ident_bytes());
         let err_group_key = group_key.clone();
@@ -263,9 +282,6 @@ impl<'a> ConfigStruct<'a> {
             .clone()
             .map(|(_, field_ident)| quote! { #field_ident });
 
-        let operations = fields
-            .iter()
-            .filter(|(f, _)| matches!(f.attributes.parser, ConfigParser::Operation(_)));
         let operation_byte_constants = operations
             .clone()
             .map(|(f, _)| f.constant_statement_bytes());
@@ -301,6 +317,10 @@ impl<'a> ConfigStruct<'a> {
         quote! {
             impl ::config::ConfigGroup for #struct_ident {
                 type Err = ::config::ConfigParseGroupError;
+
+                fn new(key: ::bytes::Bytes) -> Self {
+                    #new_body
+                }
 
                 fn parse_ast_group(&mut self, key: bytes::Bytes, ast: ::config::ast::AstGroup) -> ::std::result::Result<(), Self::Err> {
                     #(#group_byte_constants)*
@@ -501,6 +521,104 @@ impl<'a> ConfigField<'a> {
     }
 }
 
+struct ConfigFieldAttributes {
+    key: Option<LitStr>,
+    default: Option<Expr>,
+    lazy_lock: bool,
+    parser: ConfigParser,
+}
+
+impl ConfigFieldAttributes {
+    fn parse(field: &Field) -> Result<Self, syn::Error> {
+        let wkt = WellKnownType::parse(field);
+
+        let mut key = None;
+        let mut default = None;
+        let mut lazy_lock = None;
+        let mut parser: Option<ConfigParser> = None;
+
+        let mut default_lazy_lock = wkt.is_some_and(|wkc| !wkc.is_operation_const_new());
+        let default_parser = match wkt {
+            Some(wkt) => Some(wkt.parser()),
+            None => Some(ConfigParser::Group),
+        };
+
+        for attribute in &field.attrs {
+            if matches!(attribute.style, AttrStyle::Outer)
+                && let Meta::List(meta_list) = &attribute.meta
+                && meta_list.path.is_ident("key")
+            {
+                let some_key = syn::parse2::<LitStr>(meta_list.tokens.clone())?;
+                if some_key.value().is_empty() {
+                    return Err(syn::Error::new(
+                        attribute.span(),
+                        "attribute key must be non-empty string",
+                    ));
+                }
+                key = Some(some_key);
+            } else if matches!(attribute.style, AttrStyle::Outer)
+                && let Meta::List(meta_list) = &attribute.meta
+                && meta_list.path.is_ident("default")
+            {
+                default = Some(syn::parse2::<Expr>(meta_list.tokens.clone())?);
+                default_lazy_lock =
+                    wkt.is_some_and(|wkc| !wkc.is_operation_const_new_with_default());
+            } else if matches!(attribute.style, AttrStyle::Outer)
+                && let Meta::List(meta_list) = &attribute.meta
+                && meta_list.path.is_ident("lazy_lock")
+            {
+                let parsed = syn::parse2::<LitBool>(meta_list.tokens.clone())?;
+                if let Some(last) = lazy_lock.as_ref() {
+                    return Err(syn::Error::new(
+                        attribute.span(),
+                        format!("conflicts with earlier attribute lazy_lock({last})"),
+                    ));
+                }
+                lazy_lock = Some(parsed.value);
+            } else if matches!(attribute.style, AttrStyle::Outer)
+                && let Meta::List(meta_list) = &attribute.meta
+                && meta_list.path.is_ident("parse")
+            {
+                let parsed = syn::parse2::<Ident>(meta_list.tokens.clone())?;
+                if parsed == "operation" {
+                    parser = Some(ConfigParser::Operation)
+                } else if parsed == "group" {
+                    parser = Some(ConfigParser::Group)
+                } else if parsed == "key" {
+                    parser = Some(ConfigParser::GroupKey)
+                } else {
+                    return Err(syn::Error::new(
+                        parsed.span(),
+                        "invalid ast parser. Must be 'operation', 'group', or 'key'",
+                    ));
+                }
+            } else {
+                return Err(syn::Error::new(attribute.span(), "unknown attribute"));
+            }
+        }
+
+        let Some(parser) = parser.or(default_parser) else {
+            return Err(syn::Error::new(
+                field.span(),
+                "missing attribute 'value' or 'group'",
+            ));
+        };
+
+        Ok(Self {
+            key,
+            default,
+            lazy_lock: lazy_lock.unwrap_or(default_lazy_lock),
+            parser,
+        })
+    }
+}
+
+enum ConfigParser {
+    GroupKey,
+    Operation,
+    Group,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum WellKnownConfig {
     Value,
@@ -531,129 +649,62 @@ impl WellKnownConfig {
         None
     }
 
-    fn is_const_new(&self) -> bool {
+    fn parser(&self) -> ConfigParser {
+        ConfigParser::Operation
+    }
+
+    fn is_operation_const_new(&self) -> bool {
         matches!(self, Self::List | Self::Acl)
     }
 
-    fn is_const_new_with_default(&self) -> bool {
+    fn is_operation_const_new_with_default(&self) -> bool {
         false
     }
 }
 
-struct ConfigFieldAttributes {
-    key: Option<LitStr>,
-    default: Option<Expr>,
-    lazy_lock: bool,
-    parser: ConfigParser,
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum WellKnownType {
+    Key,
+    Operation(WellKnownConfig),
 }
 
-impl ConfigFieldAttributes {
-    fn parse(field: &Field) -> Result<Self, syn::Error> {
-        let wkc = WellKnownConfig::parse(field);
-
-        let mut key = None;
-        let mut default = None;
-        let mut lazy_lock = None;
-        let mut parser: Option<ConfigParser> = None;
-
-        let mut default_parser = None;
-        let mut default_lazy_lock = wkc.is_some_and(|wkc| !wkc.is_const_new());
-
-        if wkc.is_some() {
-            default_parser = Some(ConfigParser::Operation(
-                field.ident.clone().unwrap_or_else(|| format_ident!("")),
-            ));
+impl WellKnownType {
+    fn parse(field: &Field) -> Option<Self> {
+        const WKT_MAP: &[(&str, WellKnownType)] = &[("Bytes", WellKnownType::Key)];
+        // TODO: improve accuracy to reduce false-positive rate
+        if let Type::Path(TypePath { qself: None, path }) = &field.ty {
+            return WKT_MAP
+                .iter()
+                .find(|(op, _)| {
+                    path.segments
+                        .last()
+                        .is_some_and(|segment| segment.ident == op)
+                })
+                .map(|(_, wkc)| *wkc)
+                .or_else(|| WellKnownConfig::parse(field).map(Self::Operation));
         }
-
-        for attribute in &field.attrs {
-            if matches!(attribute.style, AttrStyle::Outer)
-                && let Meta::List(meta_list) = &attribute.meta
-                && meta_list.path.is_ident("key")
-            {
-                let some_key = syn::parse2::<LitStr>(meta_list.tokens.clone())?;
-                if some_key.value().is_empty() {
-                    return Err(syn::Error::new(
-                        attribute.span(),
-                        "attribute key must be non-empty string",
-                    ));
-                }
-                key = Some(some_key);
-            } else if matches!(attribute.style, AttrStyle::Outer)
-                && let Meta::List(meta_list) = &attribute.meta
-                && meta_list.path.is_ident("default")
-            {
-                default = Some(syn::parse2::<Expr>(meta_list.tokens.clone())?);
-                default_lazy_lock = wkc.is_some_and(|wkc| !wkc.is_const_new_with_default());
-            } else if matches!(attribute.style, AttrStyle::Outer)
-                && let Meta::List(meta_list) = &attribute.meta
-                && meta_list.path.is_ident("lazy_lock")
-            {
-                let parsed = syn::parse2::<LitBool>(meta_list.tokens.clone())?;
-                if let Some(last) = lazy_lock.as_ref() {
-                    return Err(syn::Error::new(
-                        attribute.span(),
-                        format!("conflicts with earlier attribute lazy_lock({last})"),
-                    ));
-                }
-                lazy_lock = Some(parsed.value);
-            } else if matches!(attribute.style, AttrStyle::Outer)
-                && let Meta::List(meta_list) = &attribute.meta
-                && meta_list.path.is_ident("parse")
-            {
-                let parsed = syn::parse2::<Ident>(meta_list.tokens.clone())?;
-                if parsed == "operation" {
-                    parser = Some(ConfigParser::Operation(parsed))
-                } else if parsed == "group" {
-                    parser = Some(ConfigParser::Group(parsed))
-                } else {
-                    return Err(syn::Error::new(
-                        parsed.span(),
-                        "invalid ast parser. Must be 'operation' or 'group'",
-                    ));
-                }
-            } else if matches!(attribute.style, AttrStyle::Outer)
-                && let Meta::Path(path) = &attribute.meta
-                && let Some(ident) = path.get_ident()
-                && ident == "group"
-            {
-                if let Some(last) = parser.as_ref() {
-                    return Err(syn::Error::new(
-                        attribute.span(),
-                        format!("conflicts with earlier attribute parse({})", last.ident()),
-                    ));
-                }
-                parser = Some(ConfigParser::Group(ident.clone()))
-            } else {
-                return Err(syn::Error::new(attribute.span(), "unknown attribute"));
-            }
-        }
-
-        let Some(parser) = parser.or(default_parser) else {
-            return Err(syn::Error::new(
-                field.span(),
-                "missing attribute 'value' or 'group'",
-            ));
-        };
-
-        Ok(Self {
-            key,
-            default,
-            lazy_lock: lazy_lock.unwrap_or(default_lazy_lock),
-            parser,
-        })
+        None
     }
-}
 
-enum ConfigParser {
-    Operation(Ident),
-    Group(Ident),
-}
-
-impl ConfigParser {
-    pub fn ident(&self) -> &Ident {
+    fn parser(&self) -> ConfigParser {
         match self {
-            Self::Operation(ident) => ident,
-            Self::Group(ident) => ident,
+            Self::Key => ConfigParser::GroupKey,
+            Self::Operation(wkc) => wkc.parser(),
+        }
+    }
+
+    fn is_operation_const_new(&self) -> bool {
+        match self {
+            // Although Bytes::new() is const, it is not an operation.
+            Self::Key => false,
+            Self::Operation(wkc) => wkc.is_operation_const_new(),
+        }
+    }
+
+    fn is_operation_const_new_with_default(&self) -> bool {
+        match self {
+            Self::Key => false,
+            Self::Operation(wkc) => wkc.is_operation_const_new_with_default(),
         }
     }
 }
