@@ -23,6 +23,7 @@ pub use set::*;
 pub use value::*;
 
 pub mod derive {
+    pub use bytes::Bytes;
     pub use config_derive::*;
 }
 

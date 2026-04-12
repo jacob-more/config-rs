@@ -97,24 +97,22 @@ impl<'a> ConfigStruct<'a> {
             .filter(|f| matches!(f.field_type(), FieldType::Config))
             .map(|f| f.default().statement_instantiate());
         let instantiate_field = self.fields.iter().map(|f| match f.field_type() {
-            FieldType::GroupKey => {
-                match group_key.clone() {
-                    Some(group_key) => group_key,
-                    None => {
-                        let byte_literal = f.key_bytes().literal();
-                        quote! {
-                            ::bytes::Bytes::from(#byte_literal.as_slice())
-                        }
-                    },
+            FieldType::GroupKey => match group_key.clone() {
+                Some(group_key) => group_key,
+                None => {
+                    let byte_literal = f.key_bytes().literal();
+                    quote! {
+                        ::config::derive::Bytes::from(#byte_literal.as_slice())
+                    }
                 }
-            }
+            },
             FieldType::Config => f.default().expr_copy_from_ident().to_token_stream(),
             FieldType::Group => {
                 let ty = f.ty();
                 let byte_literal = f.key_bytes().literal();
                 quote! {
                     <#ty as ::config::ConfigGroup>::new(
-                        ::bytes::Bytes::from(#byte_literal.as_slice())
+                        ::config::derive::Bytes::from(#byte_literal.as_slice())
                     )
                 }
             }
@@ -332,11 +330,11 @@ impl<'a> ConfigStruct<'a> {
             impl ::config::ConfigGroup for #struct_ident {
                 type Err = ::config::ConfigParseGroupError;
 
-                fn new(key: ::bytes::Bytes) -> Self {
+                fn new(key: ::config::derive::Bytes) -> Self {
                     #new_body
                 }
 
-                fn parse_ast_group(&mut self, key: bytes::Bytes, ast: ::config::ast::AstGroup) -> ::std::result::Result<(), Self::Err> {
+                fn parse_ast_group(&mut self, key: ::config::derive::Bytes, ast: ::config::ast::AstGroup) -> ::std::result::Result<(), Self::Err> {
                     #(#key_bytes_instantiate_statement)*
 
                     let parent_key = key;
