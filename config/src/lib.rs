@@ -1,5 +1,6 @@
-use std::fmt::Debug;
+use std::{ffi::OsStr, fmt::Debug, os::unix::ffi::OsStrExt};
 
+use bytes::Bytes;
 use thiserror::Error;
 
 pub mod ast;
@@ -21,7 +22,7 @@ pub use list::*;
 pub use set::*;
 pub use value::*;
 
-use crate::ast::{AstGroup, AstOperation, AstTree};
+use crate::ast::{AstEntry, AstGroup, AstOperation, AstTree};
 
 #[derive(Debug, Error)]
 enum ReprParseConfigOperationError {
@@ -56,18 +57,37 @@ impl_from_config_parse_error!(std::num::ParseFloatError);
 impl_from_config_parse_error!(std::str::Utf8Error);
 impl_from_config_parse_error!(std::net::AddrParseError);
 
+#[derive(Debug, Error)]
+pub enum ConfigParseError {
+    #[error("{} is not a valid operation key although it might be a valid group key", .0.display_key())]
+    UnknownOperationKey(AstEntry),
+    #[error("{} is not a valid group key although it might be a valid operation key", .0.display_key())]
+    UnknownGroupKey(AstEntry),
+    #[error("{} is not a valid key", .0.display_key())]
+    UnknownKey(AstEntry),
+}
+
+#[derive(Debug, Error)]
+pub enum ConfigParseGroupError {
+    #[error("{} is not a valid operation key although it might be a valid group key for group {}", .entry.display_key(), OsStr::from_bytes(.group).display())]
+    UnknownOperationKey { group: Bytes, entry: AstEntry },
+    #[error("{} is not a valid group key although it might be a valid operation key for group {}", .entry.display_key(), OsStr::from_bytes(.group).display())]
+    UnknownGroupKey { group: Bytes, entry: AstEntry },
+    #[error("{} is not a valid key for group {}", .entry.display_key(), OsStr::from_bytes(.group).display())]
+    UnknownKey { group: Bytes, entry: AstEntry },
+}
+
 pub trait Config {
     type Err;
 
-    fn parse_from_ast(&mut self, ast: AstTree) -> Result<(), Self::Err>;
+    fn parse_ast(&mut self, ast: AstTree) -> Result<(), Self::Err>;
     fn replay(&mut self, other: &Self);
 }
 
 pub trait ConfigGroup {
     type Err;
 
-    fn parse_from_ast_group(&mut self, key: bytes::Bytes, group: AstGroup)
-    -> Result<(), Self::Err>;
+    fn parse_ast_group(&mut self, key: bytes::Bytes, group: AstGroup) -> Result<(), Self::Err>;
     fn replay(&mut self, other: &Self);
 }
 

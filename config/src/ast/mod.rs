@@ -154,6 +154,17 @@ impl AstEntry {
             operation: AstOperation::Clear,
         }
     }
+
+    pub(crate) fn key(&self) -> &Bytes {
+        match self {
+            Self::Group { key, .. } => key,
+            Self::Operation { key, .. } => key,
+        }
+    }
+
+    pub(crate) fn display_key(&self) -> impl Display {
+        OsStr::from_bytes(self.key()).display()
+    }
 }
 
 impl Display for AstTree {
