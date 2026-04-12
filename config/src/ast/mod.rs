@@ -183,7 +183,7 @@ impl Display for AstEntry {
         ) -> std::fmt::Result {
             write!(
                 f,
-                "{} {op} \"{:?}\";",
+                "{} {op} \"{}\";",
                 OsStr::from_bytes(key).display(),
                 OsStr::from_bytes(value).display()
             )
