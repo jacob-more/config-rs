@@ -1,7 +1,8 @@
 [workspace]
 resolver = "3"
 members = [
-    "config"
+    "config",
+    "config-derive",
 ]
 
 # Performance can be improved for release mode and benchmarks by enabling
