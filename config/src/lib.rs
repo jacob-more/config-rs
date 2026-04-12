@@ -22,6 +22,10 @@ pub use list::*;
 pub use set::*;
 pub use value::*;
 
+pub mod derive {
+    pub use config_derive::*;
+}
+
 use crate::ast::{AstEntry, AstGroup, AstOperation, AstTree};
 
 #[derive(Debug, Error)]

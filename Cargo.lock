@@ -167,6 +167,7 @@ name = "config"
 version = "0.1.0"
 dependencies = [
  "bytes",
+ "config_derive",
  "criterion",
  "itertools 0.14.0",
  "proptest",
