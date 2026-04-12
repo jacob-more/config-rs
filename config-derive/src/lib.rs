@@ -1,8 +1,8 @@
 use proc_macro2::{Span, TokenStream};
 use quote::{format_ident, quote};
 use syn::{
-    AttrStyle, Data, DataStruct, DeriveInput, Expr, Field, Fields, Ident, LitByteStr, LitStr, Meta,
-    Type, TypePath, spanned::Spanned,
+    AttrStyle, Data, DataStruct, DeriveInput, Expr, Field, Fields, Ident, LitBool, LitByteStr,
+    LitStr, Meta, Type, TypePath, spanned::Spanned,
 };
 
 #[proc_macro_derive(Config, attributes(key, default, lazy_lock, exhaustive, parse))]
@@ -501,6 +501,45 @@ impl<'a> ConfigField<'a> {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum WellKnownConfig {
+    Value,
+    Set,
+    List,
+    Acl,
+}
+
+impl WellKnownConfig {
+    fn parse(field: &Field) -> Option<Self> {
+        const WKC_MAP: &[(&str, WellKnownConfig)] = &[
+            ("ConfigValue", WellKnownConfig::Value),
+            ("ConfigSet", WellKnownConfig::Set),
+            ("ConfigList", WellKnownConfig::List),
+            ("ConfigAcl", WellKnownConfig::Acl),
+        ];
+        // TODO: improve accuracy to reduce false-positive rate
+        if let Type::Path(TypePath { qself: None, path }) = &field.ty {
+            return WKC_MAP
+                .iter()
+                .find(|(op, _)| {
+                    path.segments
+                        .last()
+                        .is_some_and(|segment| segment.ident == op)
+                })
+                .map(|(_, wkc)| *wkc);
+        }
+        None
+    }
+
+    fn is_const_new(&self) -> bool {
+        matches!(self, Self::List | Self::Acl)
+    }
+
+    fn is_const_new_with_default(&self) -> bool {
+        false
+    }
+}
+
 struct ConfigFieldAttributes {
     key: Option<LitStr>,
     default: Option<Expr>,
@@ -510,24 +549,20 @@ struct ConfigFieldAttributes {
 
 impl ConfigFieldAttributes {
     fn parse(field: &Field) -> Result<Self, syn::Error> {
+        let wkc = WellKnownConfig::parse(field);
+
         let mut key = None;
         let mut default = None;
-        let mut lazy_lock = false;
+        let mut lazy_lock = None;
         let mut parser: Option<ConfigParser> = None;
-        let mut default_parser = None;
 
-        if let Type::Path(TypePath { qself: None, path }) = &field.ty
-            && ["ConfigValue", "ConfigSet", "ConfigList", "ConfigAcl"]
-                .iter()
-                .any(|op| {
-                    path.segments
-                        .last()
-                        .is_some_and(|segment| segment.ident == op)
-                })
-        {
+        let mut default_parser = None;
+        let mut default_lazy_lock = wkc.is_some_and(|wkc| !wkc.is_const_new());
+
+        if wkc.is_some() {
             default_parser = Some(ConfigParser::Operation(
                 field.ident.clone().unwrap_or_else(|| format_ident!("")),
-            ))
+            ));
         }
 
         for attribute in &field.attrs {
@@ -548,23 +583,31 @@ impl ConfigFieldAttributes {
                 && meta_list.path.is_ident("default")
             {
                 default = Some(syn::parse2::<Expr>(meta_list.tokens.clone())?);
+                default_lazy_lock = wkc.is_some_and(|wkc| !wkc.is_const_new_with_default());
             } else if matches!(attribute.style, AttrStyle::Outer)
-                && let Meta::Path(path) = &attribute.meta
-                && path.is_ident("lazy_lock")
+                && let Meta::List(meta_list) = &attribute.meta
+                && meta_list.path.is_ident("lazy_lock")
             {
-                lazy_lock = true;
+                let parsed = syn::parse2::<LitBool>(meta_list.tokens.clone())?;
+                if let Some(last) = lazy_lock.as_ref() {
+                    return Err(syn::Error::new(
+                        attribute.span(),
+                        format!("conflicts with earlier attribute lazy_lock({last})"),
+                    ));
+                }
+                lazy_lock = Some(parsed.value);
             } else if matches!(attribute.style, AttrStyle::Outer)
                 && let Meta::List(meta_list) = &attribute.meta
                 && meta_list.path.is_ident("parse")
             {
-                let parse = syn::parse2::<Ident>(meta_list.tokens.clone())?;
-                if parse == "operation" {
-                    parser = Some(ConfigParser::Operation(parse))
-                } else if parse == "group" {
-                    parser = Some(ConfigParser::Group(parse))
+                let parsed = syn::parse2::<Ident>(meta_list.tokens.clone())?;
+                if parsed == "operation" {
+                    parser = Some(ConfigParser::Operation(parsed))
+                } else if parsed == "group" {
+                    parser = Some(ConfigParser::Group(parsed))
                 } else {
                     return Err(syn::Error::new(
-                        parse.span(),
+                        parsed.span(),
                         "invalid ast parser. Must be 'operation' or 'group'",
                     ));
                 }
@@ -576,7 +619,7 @@ impl ConfigFieldAttributes {
                 if let Some(last) = parser.as_ref() {
                     return Err(syn::Error::new(
                         attribute.span(),
-                        format!("conflicts with earlier attribute {}", last.ident()),
+                        format!("conflicts with earlier attribute parse({})", last.ident()),
                     ));
                 }
                 parser = Some(ConfigParser::Group(ident.clone()))
@@ -584,16 +627,18 @@ impl ConfigFieldAttributes {
                 return Err(syn::Error::new(attribute.span(), "unknown attribute"));
             }
         }
+
         let Some(parser) = parser.or(default_parser) else {
             return Err(syn::Error::new(
                 field.span(),
                 "missing attribute 'value' or 'group'",
             ));
         };
+
         Ok(Self {
             key,
             default,
-            lazy_lock,
+            lazy_lock: lazy_lock.unwrap_or(default_lazy_lock),
             parser,
         })
     }
