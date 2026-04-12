@@ -4,13 +4,16 @@ use bytes::Bytes;
 use proptest::prelude::*;
 use proptest_derive::Arbitrary;
 
-use crate::ast::{
-    AstEntry, AstTree,
-    parser::{
-        AstParser, IterEscaped, OPERATOR_BYTES_ADD, OPERATOR_BYTES_ASSIGN,
-        OPERATOR_BYTES_ASSIGN_IF_UNDEFINED, OPERATOR_BYTES_CLEAR, OPERATOR_BYTES_REMOVE,
-        OPERATOR_BYTES_RESET,
+use crate::{
+    ast::{
+        AstEntry, AstTree,
+        parser::{
+            AstParser, OPERATOR_BYTES_ADD, OPERATOR_BYTES_ASSIGN,
+            OPERATOR_BYTES_ASSIGN_IF_UNDEFINED, OPERATOR_BYTES_CLEAR, OPERATOR_BYTES_REMOVE,
+            OPERATOR_BYTES_RESET,
+        },
     },
+    ext::IterEscaped,
 };
 
 trait AsBytes {

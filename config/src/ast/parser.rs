@@ -9,7 +9,7 @@ use crate::{
         AstEntry, AstTree, OPERATOR_ADD, OPERATOR_ASSIGN, OPERATOR_ASSIGN_IF_UNDEFINED,
         OPERATOR_CLEAR, OPERATOR_REMOVE, OPERATOR_RESET,
     },
-    ext::IterJoin,
+    ext::{IterEscaped, IterJoin},
 };
 
 #[cfg(test)]
@@ -337,49 +337,6 @@ impl AstParse {
         } else {
             let tree = stack.pop().expect("stack initialized with one element");
             Ok(AstTree::from_iter(tree.entries))
-        }
-    }
-}
-
-trait IterEscaped<I> {
-    fn unescaped(self) -> UnescapeBytes<I>
-    where
-        Self: Sized;
-}
-
-impl<'a, I> IterEscaped<I::IntoIter> for I
-where
-    I: IntoIterator<Item = &'a u8>,
-{
-    fn unescaped(self) -> UnescapeBytes<I::IntoIter>
-    where
-        Self: Sized,
-    {
-        UnescapeBytes::new(self.into_iter())
-    }
-}
-
-struct UnescapeBytes<I>(I);
-impl<'a, I> UnescapeBytes<I>
-where
-    I: Iterator<Item = &'a u8>,
-{
-    fn new(unescaped_string: I) -> Self {
-        Self(unescaped_string)
-    }
-}
-impl<'a, I> Iterator for UnescapeBytes<I>
-where
-    I: Iterator<Item = &'a u8>,
-{
-    type Item = I::Item;
-
-    fn next(&mut self) -> Option<I::Item> {
-        let byte = self.0.next()?;
-        if *byte == b'\\' {
-            Some(self.0.next().unwrap_or(byte))
-        } else {
-            Some(byte)
         }
     }
 }
