@@ -427,7 +427,75 @@ impl<'a> ConfigStruct<'a> {
     }
 
     fn generate_impl_display(&self) -> TokenStream {
-        todo!()
+        let struct_ident = &self.data.ident;
+        let group_key = self
+            .fields
+            .iter()
+            .find(|f| matches!(f.field_type(), FieldType::GroupKey));
+        let fields = self
+            .fields
+            .iter()
+            .filter(|f| !matches!(f.field_type(), FieldType::GroupKey))
+            .collect::<Vec<_>>();
+
+        match (group_key, fields.split_last()) {
+            (Some(group_key), Some(_)) => {
+                let key_ident = group_key.ident();
+                let ident = fields.iter().map(|f| f.ident());
+                quote! {
+                    impl ::std::fmt::Display for #struct_ident {
+                        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+                            writeln!(f, "{}: {{",
+                                ::std::ffi::OsStr::display(
+                                    ::std::os::unix::ffi::OsStrExt::from_bytes(
+                                        ::std::ops::Deref::deref(&self.#key_ident)
+                                    )
+                                )
+                            )?;
+                            #(writeln!(f, "    {}", &self.#ident)?;)*
+                            write!(f, "}}")
+                        }
+                    }
+                }
+            }
+            (Some(group_key), None) => {
+                let key_ident = group_key.ident();
+                quote! {
+                    impl ::std::fmt::Display for #struct_ident {
+                        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+                            write!(f, "{}: {{ }}",
+                                ::std::ffi::OsStr::display(
+                                    ::std::os::unix::ffi::OsStrExt::from_bytes(
+                                        ::std::ops::Deref::deref(&self.#key_ident)
+                                    )
+                                )
+                            )
+                        }
+                    }
+                }
+            }
+            (None, Some((last_field, fields))) => {
+                let ident = fields.iter().map(|f| f.ident());
+                let last_ident = last_field.ident();
+                quote! {
+                    impl ::std::fmt::Display for #struct_ident {
+                        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+                            #(writeln!(f, "{}", &self.#ident)?;)*
+                            write!(f, "{}", &self.#last_ident)
+                        }
+                    }
+                }
+            }
+            (None, None) => {
+                quote! {
+                    impl ::std::fmt::Display for #struct_ident {
+                        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+                            Ok(())
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 

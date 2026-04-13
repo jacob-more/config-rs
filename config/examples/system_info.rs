@@ -1,7 +1,9 @@
 use config::derive;
 use config::{ConfigExt, ConfigValue};
 
-#[derive(Debug, Clone, derive::Config, derive::ConfigGroup, derive::ConfigDefault)]
+#[derive(
+    Debug, Clone, derive::Config, derive::ConfigGroup, derive::ConfigDefault, derive::ConfigDisplay,
+)]
 #[exhaustive]
 pub struct Locale {
     pub group_key: bytes::Bytes,
@@ -17,7 +19,9 @@ pub struct Locale {
     pub lc_time: ConfigValue<Option<&'static str>>,
 }
 
-#[derive(Debug, Clone, derive::Config, derive::ConfigGroup, derive::ConfigDefault)]
+#[derive(
+    Debug, Clone, derive::Config, derive::ConfigGroup, derive::ConfigDefault, derive::ConfigDisplay,
+)]
 pub struct OsRelease {
     pub group_key: bytes::Bytes,
     pub name: ConfigValue<Option<&'static str>>,
@@ -32,7 +36,7 @@ pub struct OsRelease {
     pub privacy_policy_url: ConfigValue<Option<&'static str>>,
 }
 
-#[derive(Debug, Clone, derive::Config, derive::ConfigDefault)]
+#[derive(Debug, Clone, derive::Config, derive::ConfigDefault, derive::ConfigDisplay)]
 pub struct SystemInfo {
     pub os_release: OsRelease,
     pub locale: Locale,
@@ -49,34 +53,8 @@ fn main() {
     ));
 
     println!("{OS_RELEASE_PATH}");
-    for config in [
-        &os_release.name,
-        &os_release.id,
-        &os_release.id_like,
-        &os_release.pretty_name,
-        &os_release.ansi_color,
-        &os_release.home_url,
-        &os_release.documentation_url,
-        &os_release.support_url,
-        &os_release.bug_report_url,
-        &os_release.privacy_policy_url,
-    ] {
-        println!("    {config}");
-    }
+    println!("{os_release}");
 
     println!("{LOCALE_PATH}");
-    for config in [
-        &locale.lang,
-        &locale.lc_address,
-        &locale.lc_identification,
-        &locale.lc_measurement,
-        &locale.lc_monetary,
-        &locale.lc_name,
-        &locale.lc_numeric,
-        &locale.lc_paper,
-        &locale.lc_telephone,
-        &locale.lc_time,
-    ] {
-        println!("    {config}");
-    }
+    println!("{locale}");
 }
