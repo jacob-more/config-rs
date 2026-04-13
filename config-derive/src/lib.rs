@@ -147,6 +147,15 @@ impl<'a> ConfigStruct<'a> {
                     )
                 }
             }
+            FieldType::AnyGroup => {
+                let ty = f.ty();
+                let byte_literal = f.key_bytes().literal();
+                quote! {
+                    <#ty as ::config::ConfigGroup>::new(
+                        ::config::derive::Bytes::from(#byte_literal.as_slice())
+                    )
+                }
+            }
         });
 
         match &self.data_struct.fields {
@@ -193,6 +202,10 @@ impl<'a> ConfigStruct<'a> {
             .fields
             .iter()
             .filter(|f| matches!(f.field_type(), FieldType::Group));
+        let any_groups = self
+            .fields
+            .iter()
+            .filter(|f| matches!(f.field_type(), FieldType::AnyGroup));
         let configs = self
             .fields
             .iter()
@@ -206,6 +219,8 @@ impl<'a> ConfigStruct<'a> {
                 [#(#literal,)*]
             }
         };
+
+        let any_group_ident = any_groups.map(|f| f.ident());
 
         let config_key_pattern = configs.clone().map(|f| f.key_bytes().literal());
         let config_ident = configs.clone().map(|f| f.ident());
@@ -225,7 +240,7 @@ impl<'a> ConfigStruct<'a> {
                 };
                 Some(tokens)
             }
-            FieldType::Group => {
+            FieldType::Group | FieldType::AnyGroup => {
                 let ident = f.ident();
                 let tokens = quote! {
                     ::config::ConfigGroup::replay(&mut self.#ident, &other.#ident);
@@ -250,6 +265,11 @@ impl<'a> ConfigStruct<'a> {
                         match entry {
                             ::config::ast::AstEntry::Group { key, group } => match ::std::ops::Deref::deref(&key) {
                                 #(#group_key_pattern => if let Err(error) = ::config::ConfigGroup::parse_ast_group(&mut self.#group_ident, key, group) {
+                                    return Err(::std::boxed::Box::new(
+                                        ::config::ConfigParseError::Group(*error))
+                                    );
+                                },)*
+                                #(_ => if let Err(error) = ::config::ConfigGroup::parse_ast_group(&mut self.#any_group_ident, key, group) {
                                     return Err(::std::boxed::Box::new(
                                         ::config::ConfigParseError::Group(*error))
                                     );
@@ -323,6 +343,10 @@ impl<'a> ConfigStruct<'a> {
             .fields
             .iter()
             .filter(|f| matches!(f.field_type(), FieldType::Group));
+        let any_groups = self
+            .fields
+            .iter()
+            .filter(|f| matches!(f.field_type(), FieldType::AnyGroup));
         let configs = self
             .fields
             .iter()
@@ -336,6 +360,8 @@ impl<'a> ConfigStruct<'a> {
                 [#(#literal,)*]
             }
         };
+
+        let any_group_ident = any_groups.map(|f| f.ident());
 
         let config_key_pattern = configs.clone().map(|f| f.key_bytes().literal());
         let config_ident = configs.clone().map(|f| f.ident());
@@ -355,7 +381,7 @@ impl<'a> ConfigStruct<'a> {
                 };
                 Some(tokens)
             }
-            FieldType::Group => {
+            FieldType::Group | FieldType::AnyGroup => {
                 let ident = f.ident();
                 let tokens = quote! {
                     ::config::ConfigGroup::replay(&mut self.#ident, &other.#ident);
@@ -388,6 +414,11 @@ impl<'a> ConfigStruct<'a> {
                                     return Err(::std::boxed::Box::new(
                                         ::config::ConfigParseGroupError::Group { group: parent_key, error }
                                     ));
+                                },)*
+                                #(_ => if let Err(error) = ::config::ConfigGroup::parse_ast_group(&mut self.#any_group_ident, key, group) {
+                                    return Err(::std::boxed::Box::new(
+                                        ::config::ConfigParseError::Group(*error))
+                                    );
                                 },)*
                                 #ignore_unmatched_keys
                                 _ => {

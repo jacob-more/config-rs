@@ -10,6 +10,7 @@ pub enum FieldType {
     GroupKey,
     Config,
     Group,
+    AnyGroup,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -19,6 +20,7 @@ enum WellKnownType {
     ConfigSet,
     ConfigList,
     ConfigAcl,
+    Map,
 }
 
 impl WellKnownType {
@@ -29,6 +31,7 @@ impl WellKnownType {
             ("ConfigSet", WellKnownType::ConfigSet),
             ("ConfigList", WellKnownType::ConfigList),
             ("ConfigAcl", WellKnownType::ConfigAcl),
+            ("HashMap", WellKnownType::Map),
         ];
         // TODO: to improve accuracy and reduce false-positive rate, checks all
         //       segments in the path that are present and count the number of
@@ -53,6 +56,7 @@ impl WellKnownType {
             Self::ConfigSet => FieldType::Config,
             Self::ConfigList => FieldType::Config,
             Self::ConfigAcl => FieldType::Config,
+            Self::Map => FieldType::AnyGroup,
         }
     }
 
@@ -257,6 +261,7 @@ impl ConfigFieldAttributes {
                 const FIELD_TYPE_MAP: &[(&str, FieldType)] = &[
                     ("config", FieldType::Config),
                     ("group", FieldType::Group),
+                    ("any_group", FieldType::AnyGroup),
                     ("key", FieldType::GroupKey),
                 ];
                 for (name, ft) in FIELD_TYPE_MAP {
