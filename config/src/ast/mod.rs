@@ -16,7 +16,7 @@ pub const OPERATOR_CLEAR: &str = "!!";
 
 #[derive(Debug, Error)]
 #[error(transparent)]
-pub struct AstParseError(#[from] parser::AstParseError);
+pub struct AstParseError(#[from] Box<parser::AstParseError>);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AstTree {

@@ -27,7 +27,7 @@ pub mod derive {
     pub use config_derive::*;
 }
 
-use crate::ast::{AstEntry, AstGroup, AstOperation, AstTree};
+use crate::ast::{AstEntry, AstGroup, AstOperation, AstParseError, AstTree};
 #[derive(Debug)]
 pub enum Operation<T: ICval> {
     Assign(Cval<T>),
@@ -71,12 +71,12 @@ enum ReprParseConfigOperationError {
 
 #[derive(Debug, Error)]
 #[error(transparent)]
-pub struct ConfigParseOperationError(#[from] ReprParseConfigOperationError);
+pub struct ConfigParseOperationError(#[from] Box<ReprParseConfigOperationError>);
 macro_rules! impl_from_config_parse_error {
     ($ty:ty) => {
         impl From<$ty> for ConfigParseOperationError {
             fn from(value: $ty) -> Self {
-                ConfigParseOperationError(ReprParseConfigOperationError::from(value))
+                ConfigParseOperationError(Box::new(ReprParseConfigOperationError::from(value)))
             }
         }
     };
@@ -203,9 +203,9 @@ where
 
 impl<C> ConfigGroup for HashMap<Bytes, C>
 where
-    C: ConfigGroup<Err = ConfigParseGroupError>,
+    C: ConfigGroup<Err = Box<ConfigParseGroupError>>,
 {
-    type Err = ConfigParseGroupError;
+    type Err = Box<ConfigParseGroupError>;
 
     fn new(_key: bytes::Bytes) -> Self {
         Self::default()
@@ -221,10 +221,10 @@ where
                         .parse_ast_group(key, group)?;
                 }
                 AstEntry::Operation { key, operation } => {
-                    return Err(Self::Err::UnknownOperationKey {
+                    return Err(Box::new(ConfigParseGroupError::UnknownOperationKey {
                         group: parent_group,
                         entry: AstEntry::Operation { key, operation },
-                    });
+                    }));
                 }
             }
         }

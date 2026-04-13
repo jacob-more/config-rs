@@ -459,9 +459,9 @@ impl TryFrom<Bytes> for Cval<bool> {
         } else if BOOLEAN_FALSE.iter().any(|x| x.eq_ignore_ascii_case(&value)) {
             Ok(Self(false))
         } else {
-            Err(ConfigParseOperationError(
+            Err(ConfigParseOperationError(Box::new(
                 ReprParseConfigOperationError::ParseBoolean,
-            ))
+            )))
         }
     }
 }
@@ -501,9 +501,9 @@ impl TryFrom<Bytes> for Cval<char> {
         let value = str::from_utf8(&value)?;
         match (value.chars().next(), value.chars().next()) {
             (Some(character), None) => Ok(Self(character)),
-            (_, _) => Err(ConfigParseOperationError(
+            (_, _) => Err(ConfigParseOperationError(Box::new(
                 ReprParseConfigOperationError::ParseChar,
-            )),
+            ))),
         }
     }
 }

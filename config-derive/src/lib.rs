@@ -222,7 +222,7 @@ impl<'a> ConfigStruct<'a> {
 
         quote! {
             impl ::config::Config for #struct_ident {
-                type Err = ::config::ConfigParseError;
+                type Err = ::std::boxed::Box<::config::ConfigParseError>;
 
                 fn parse_ast(&mut self, ast: ::config::ast::AstTree) -> ::std::result::Result<(), Self::Err> {
                     #(#key_bytes_instantiate_statement)*
@@ -231,34 +231,46 @@ impl<'a> ConfigStruct<'a> {
                         match entry {
                             ::config::ast::AstEntry::Group { key, group } => match ::std::ops::Deref::deref(&key) {
                                 #(#group_key_pattern => if let Err(error) = ::config::ConfigGroup::parse_ast_group(&mut self.#group_ident, key, group) {
-                                    return Err(Self::Err::Group(error));
+                                    return Err(::std::boxed::Box::new(
+                                        ::config::ConfigParseError::Group(*error))
+                                    );
                                 },)*
                                 #ignore_unmatched_keys
                                 _ => {
                                     if <[&[u8]]>::contains(&#config_key_array, &::std::ops::Deref::deref(&key)) {
-                                        return Err(Self::Err::UnknownGroupKey(
-                                            ::config::ast::AstEntry::Group { key, group }
+                                        return Err(::std::boxed::Box::new(
+                                            ::config::ConfigParseError::UnknownGroupKey(
+                                                ::config::ast::AstEntry::Group { key, group }
+                                            )
                                         ));
                                     } else {
-                                        return Err(Self::Err::UnknownKey(
-                                            ::config::ast::AstEntry::Group { key, group }
+                                        return Err(::std::boxed::Box::new(
+                                            ::config::ConfigParseError::UnknownKey(
+                                                ::config::ast::AstEntry::Group { key, group }
+                                            )
                                         ));
                                     }
                                 },
                             },
                             ::config::ast::AstEntry::Operation { key, operation } => match ::std::ops::Deref::deref(&key) {
                                 #(#config_key_pattern => if let Err(error) = ::config::ConfigOperationExt::parse_ast_entry(&mut self.#config_ident, key, operation) {
-                                    return Err(Self::Err::Operation(error));
+                                    return Err(::std::boxed::Box::new(
+                                        ::config::ConfigParseError::Operation(error)
+                                    ));
                                 },)*
                                 #ignore_unmatched_keys
                                 _ => {
                                     if <[&[u8]]>::contains(&#group_key_array, &::std::ops::Deref::deref(&key)) {
-                                        return Err(Self::Err::UnknownOperationKey(
-                                            ::config::ast::AstEntry::Operation { key, operation }
+                                        return Err(::std::boxed::Box::new(
+                                            ::config::ConfigParseError::UnknownOperationKey(
+                                                ::config::ast::AstEntry::Operation { key, operation }
+                                            )
                                         ));
                                     } else {
-                                        return Err(Self::Err::UnknownKey(
-                                            ::config::ast::AstEntry::Operation { key, operation }
+                                        return Err(::std::boxed::Box::new(
+                                            ::config::ConfigParseError::UnknownKey(
+                                                ::config::ast::AstEntry::Operation { key, operation }
+                                            )
                                         ));
                                     }
                                 },
@@ -340,7 +352,7 @@ impl<'a> ConfigStruct<'a> {
 
         quote! {
             impl ::config::ConfigGroup for #struct_ident {
-                type Err = ::config::ConfigParseGroupError;
+                type Err = ::std::boxed::Box<::config::ConfigParseGroupError>;
 
                 fn new(key: ::config::derive::Bytes) -> Self {
                     #new_body
@@ -354,39 +366,51 @@ impl<'a> ConfigStruct<'a> {
                         match entry {
                             ::config::ast::AstEntry::Group { key, group } => match ::std::ops::Deref::deref(&key) {
                                 #(#group_key_pattern => if let Err(error) = ::config::ConfigGroup::parse_ast_group(&mut self.#group_ident, key, group) {
-                                    return Err(Self::Err::Group { group: parent_key, error });
+                                    return Err(::std::boxed::Box::new(
+                                        ::config::ConfigParseGroupError::Group { group: parent_key, error: *error }
+                                    ));
                                 },)*
                                 #ignore_unmatched_keys
                                 _ => {
                                     if <[&[u8]]>::contains(&#config_key_array, &::std::ops::Deref::deref(&key)) {
-                                        return Err(Self::Err::UnknownGroupKey {
-                                            group: parent_key,
-                                            entry: ::config::ast::AstEntry::Group { key, group }
-                                        });
+                                        return Err(::std::boxed::Box::new(
+                                            ::config::ConfigParseGroupError::UnknownGroupKey {
+                                                group: parent_key,
+                                                entry: ::config::ast::AstEntry::Group { key, group }
+                                            }
+                                        ));
                                     } else {
-                                        return Err(Self::Err::UnknownKey {
-                                            group: parent_key,
-                                            entry: ::config::ast::AstEntry::Group { key, group },
-                                        });
+                                        return Err(::std::boxed::Box::new(
+                                            ::config::ConfigParseGroupError::UnknownKey {
+                                                group: parent_key,
+                                                entry: ::config::ast::AstEntry::Group { key, group },
+                                            }
+                                        ));
                                     }
                                 },
                             },
                             ::config::ast::AstEntry::Operation { key, operation } => match ::std::ops::Deref::deref(&key) {
                                 #(#config_key_pattern => if let Err(error) = ::config::ConfigOperationExt::parse_ast_entry(&mut self.#config_ident, key, operation) {
-                                    return Err(Self::Err::Operation { group: parent_key, error });
+                                    return Err(::std::boxed::Box::new(
+                                        ::config::ConfigParseGroupError::Operation { group: parent_key, error }
+                                    ));
                                 },)*
                                 #ignore_unmatched_keys
                                 _ => {
                                     if <[&[u8]]>::contains(&#group_key_array, &::std::ops::Deref::deref(&key)) {
-                                        return Err(Self::Err::UnknownOperationKey {
-                                            group: parent_key,
-                                            entry: ::config::ast::AstEntry::Operation { key, operation },
-                                        });
+                                        return Err(::std::boxed::Box::new(
+                                            ::config::ConfigParseGroupError::UnknownOperationKey {
+                                                group: parent_key,
+                                                entry: ::config::ast::AstEntry::Operation { key, operation },
+                                            }
+                                        ));
                                     } else {
-                                        return Err(Self::Err::UnknownKey {
-                                            group: parent_key,
-                                            entry: ::config::ast::AstEntry::Operation { key, operation },
-                                        });
+                                        return Err(::std::boxed::Box::new(
+                                            ::config::ConfigParseGroupError::UnknownKey {
+                                                group: parent_key,
+                                                entry: ::config::ast::AstEntry::Operation { key, operation },
+                                            }
+                                        ));
                                     }
                                 },
                             },

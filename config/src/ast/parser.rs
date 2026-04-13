@@ -190,7 +190,7 @@ impl AstParser {
 }
 
 impl AstParse {
-    pub fn parse_into_tree(self) -> Result<AstTree, AstParseError> {
+    pub fn parse_into_tree(self) -> Result<AstTree, Box<AstParseError>> {
         fn capture_string<'a>(
             source_buffer: &Bytes,
             captured: &Captures<'a>,
@@ -228,10 +228,10 @@ impl AstParse {
         for captured in self.parser.regex.captures_iter(&self.buffer) {
             let matched = captured.get_match();
             if matched.start() > next_start {
-                return Err(AstParseError::UnknownSequence {
+                return Err(Box::new(AstParseError::UnknownSequence {
                     line: count_lines(&self.buffer[..matched.start()]),
                     sequence: self.buffer.slice(next_start..matched.start()),
-                });
+                }));
             }
             debug_assert_eq!(
                 matched.start(),
@@ -309,10 +309,10 @@ impl AstParse {
                         continue;
                     }
                     None => {
-                        return Err(AstParseError::UnmatchedGroupClose {
+                        return Err(Box::new(AstParseError::UnmatchedGroupClose {
                             line: count_lines(&self.buffer[..matched_body_close.end()]),
                             group_close: self.buffer.slice_ref(matched_body_close.as_bytes()),
-                        });
+                        }));
                     }
                 }
             }
@@ -329,11 +329,11 @@ impl AstParse {
 
         if stack.len() > 1 {
             let incomplete_group = stack.pop().expect("stack len is greater than 1");
-            Err(AstParseError::IncompleteGroup {
+            Err(Box::new(AstParseError::IncompleteGroup {
                 line: count_lines(&self.buffer[..incomplete_group.span_start]),
                 context: self.buffer.slice(incomplete_group.span_start..),
                 identifier: incomplete_group.name,
-            })
+            }))
         } else {
             let tree = stack.pop().expect("stack initialized with one element");
             Ok(AstTree::from_iter(tree.entries))
