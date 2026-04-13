@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use proc_macro2::TokenStream;
 use quote::{ToTokens, quote};
 use syn::{AttrStyle, Data, DataStruct, DeriveInput, Fields, Meta, spanned::Spanned};
@@ -92,6 +94,23 @@ impl<'a> ConfigStruct<'a> {
         let mut fields = Vec::with_capacity(data_struct.fields.len());
         for (index, field) in data_struct.fields.iter().enumerate() {
             fields.push(ConfigField::parse(field, index)?);
+        }
+        // Ensure all keys are unique within namespaces
+        for namespace in [FieldType::GroupKey, FieldType::Config, FieldType::Group] {
+            let mut taken_keys = HashMap::with_capacity(fields.len());
+            for field in fields.iter().filter(|f| f.field_type() == namespace) {
+                let key = field.key_str().literal().value();
+                if let Some(previous) = taken_keys.get(&key) {
+                    return Err(syn::Error::new(
+                        field.span(),
+                        format!(
+                            "field {} has the same key as {previous} ({key})",
+                            field.ident()
+                        ),
+                    ));
+                }
+                taken_keys.insert(key, field.ident());
+            }
         }
         Ok(Self {
             attributes: ConfigStructAttributes::parse(data)?,

@@ -368,4 +368,8 @@ impl<'a> ConfigField<'a> {
     pub fn key_bytes(&self) -> ConfigBytesKey<'a, '_> {
         ConfigBytesKey(self)
     }
+
+    pub fn span(&self) -> Span {
+        self.field.span()
+    }
 }
