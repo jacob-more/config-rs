@@ -166,7 +166,13 @@ impl From<Box<ConfigParseError>> for Box<ConfigParseIoError> {
 pub trait Config {
     type Err;
 
-    fn parse_ast(&mut self, ast: Ast) -> Result<(), Self::Err>;
+    fn parse_ast(&mut self, ast: Ast) -> Result<(), Self::Err> {
+        for entry in ast.into_entries() {
+            self.parse_ast_entry(entry)?;
+        }
+        Ok(())
+    }
+    fn parse_ast_entry(&mut self, entry: AstEntry) -> Result<(), Self::Err>;
     fn replay(&mut self, other: &Self);
 }
 
@@ -231,7 +237,13 @@ pub trait ConfigGroup {
     type Err;
 
     fn new(key: bytes::Bytes) -> Self;
-    fn parse_ast_group(&mut self, key: bytes::Bytes, group: AstGroup) -> Result<(), Self::Err>;
+    fn parse_ast_group(&mut self, key: bytes::Bytes, group: AstGroup) -> Result<(), Self::Err> {
+        for entry in group.into_entries() {
+            self.parse_ast_entry(&key, entry)?;
+        }
+        Ok(())
+    }
+    fn parse_ast_entry(&mut self, key: &bytes::Bytes, entry: AstEntry) -> Result<(), Self::Err>;
     fn replay(&mut self, other: &Self);
 }
 
@@ -307,19 +319,17 @@ where
 {
     type Err = Box<ConfigParseError>;
 
-    fn parse_ast(&mut self, ast: Ast) -> Result<(), Self::Err> {
-        for entry in ast.into_entries() {
-            match entry {
-                AstEntry::Group { key, group } => {
-                    self.entry(key.clone())
-                        .or_insert_with(|| ConfigGroup::new(key.clone()))
-                        .parse_ast_group(key, group)?;
-                }
-                AstEntry::Operation { key, operation } => {
-                    return Err(Box::new(ConfigParseError::UnknownOperationKey(
-                        AstEntry::Operation { key, operation },
-                    )));
-                }
+    fn parse_ast_entry(&mut self, entry: AstEntry) -> Result<(), Self::Err> {
+        match entry {
+            AstEntry::Group { key, group } => {
+                self.entry(key.clone())
+                    .or_insert_with(|| ConfigGroup::new(key.clone()))
+                    .parse_ast_group(key, group)?;
+            }
+            AstEntry::Operation { key, operation } => {
+                return Err(Box::new(ConfigParseError::UnknownOperationKey(
+                    AstEntry::Operation { key, operation },
+                )));
             }
         }
         Ok(())
@@ -344,21 +354,20 @@ where
         Self::default()
     }
 
-    fn parse_ast_group(&mut self, key: bytes::Bytes, group: AstGroup) -> Result<(), Self::Err> {
+    fn parse_ast_entry(&mut self, key: &bytes::Bytes, entry: AstEntry) -> Result<(), Self::Err> {
         let parent_group = key;
-        for entry in group.into_entries() {
-            match entry {
-                AstEntry::Group { key, group } => {
-                    self.entry(key.clone())
-                        .or_insert_with(|| ConfigGroup::new(key.clone()))
-                        .parse_ast_group(key, group)?;
-                }
-                AstEntry::Operation { key, operation } => {
-                    return Err(Box::new(ConfigParseGroupError::UnknownOperationKey {
-                        group: parent_group,
-                        entry: AstEntry::Operation { key, operation },
-                    }));
-                }
+
+        match entry {
+            AstEntry::Group { key, group } => {
+                self.entry(key.clone())
+                    .or_insert_with(|| ConfigGroup::new(key.clone()))
+                    .parse_ast_group(key, group)?;
+            }
+            AstEntry::Operation { key, operation } => {
+                return Err(Box::new(ConfigParseGroupError::UnknownOperationKey {
+                    group: parent_group.clone(),
+                    entry: AstEntry::Operation { key, operation },
+                }));
             }
         }
         Ok(())

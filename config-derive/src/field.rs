@@ -11,6 +11,7 @@ pub enum FieldType {
     Config,
     Group,
     AnyGroup,
+    Flatten,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -262,6 +263,7 @@ impl ConfigFieldAttributes {
                     ("config", FieldType::Config),
                     ("group", FieldType::Group),
                     ("any_group", FieldType::AnyGroup),
+                    ("flatten", FieldType::Flatten),
                     ("key", FieldType::GroupKey),
                 ];
                 for (name, ft) in FIELD_TYPE_MAP {
