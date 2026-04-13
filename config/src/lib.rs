@@ -301,6 +301,39 @@ where
 {
 }
 
+impl<C> Config for HashMap<Bytes, C>
+where
+    C: ConfigGroup<Err = Box<ConfigParseError>>,
+{
+    type Err = Box<ConfigParseError>;
+
+    fn parse_ast(&mut self, ast: Ast) -> Result<(), Self::Err> {
+        for entry in ast.into_entries() {
+            match entry {
+                AstEntry::Group { key, group } => {
+                    self.entry(key.clone())
+                        .or_insert_with(|| ConfigGroup::new(key.clone()))
+                        .parse_ast_group(key, group)?;
+                }
+                AstEntry::Operation { key, operation } => {
+                    return Err(Box::new(ConfigParseError::UnknownOperationKey(
+                        AstEntry::Operation { key, operation },
+                    )));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn replay(&mut self, other: &Self) {
+        for (key, group) in other.iter() {
+            self.entry(key.clone())
+                .or_insert_with(|| ConfigGroup::new(key.clone()))
+                .replay(group);
+        }
+    }
+}
+
 impl<C> ConfigGroup for HashMap<Bytes, C>
 where
     C: ConfigGroup<Err = Box<ConfigParseGroupError>>,
