@@ -313,7 +313,7 @@ impl<'a> ConfigField<'a> {
     pub fn parse(field: &'a Field, field_index: usize) -> Result<Self, syn::Error> {
         let attributes = ConfigFieldAttributes::parse(field)?;
         let key = match (&field.ident, &attributes.key) {
-            (_, Some(key)) => ConfigKey::new(key.suffix(), key.span()),
+            (_, Some(key)) => ConfigKey::new(key.value(), key.span()),
             (Some(key), None) => ConfigKey::new(key.to_string().to_uppercase(), key.span()),
             (None, None) => {
                 return Err(syn::Error::new(
