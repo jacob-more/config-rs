@@ -12,7 +12,7 @@ static EXAMPLES_DIRECTORY: LazyLock<PathBuf> = LazyLock::new(|| {
 const EXAMPLE_CONFIG_FILES: &[&str] = &["cargo.lock.conf", "root_hints.conf"];
 
 fn parse_to_ast(read_bytes: Bytes) {
-    let Ok(_) = black_box(config::ast::AstTree::parse_bytes(read_bytes)) else {
+    let Ok(_) = black_box(config::ast::AstTree::from_bytes(read_bytes)) else {
         panic!("error when parsing the bytes into a tree");
     };
 }

@@ -120,12 +120,112 @@ pub enum ConfigParseGroupError {
     },
 }
 
+#[derive(Debug, Error)]
+pub enum ConfigParseBytesError {
+    #[error(transparent)]
+    Ast(#[from] AstParseError),
+    #[error(transparent)]
+    Config(#[from] ConfigParseError),
+}
+impl From<AstParseError> for Box<ConfigParseBytesError> {
+    fn from(value: AstParseError) -> Self {
+        Box::new(ConfigParseBytesError::Ast(value))
+    }
+}
+impl From<Box<ConfigParseError>> for Box<ConfigParseBytesError> {
+    fn from(value: Box<ConfigParseError>) -> Self {
+        Box::new(ConfigParseBytesError::Config(*value))
+    }
+}
+
+#[derive(Debug, Error)]
+pub enum ConfigParseIoError {
+    #[error(transparent)]
+    Io(#[from] std::io::Error),
+    #[error(transparent)]
+    Ast(#[from] AstParseError),
+    #[error(transparent)]
+    Config(#[from] ConfigParseError),
+}
+impl From<std::io::Error> for Box<ConfigParseIoError> {
+    fn from(value: std::io::Error) -> Self {
+        Box::new(ConfigParseIoError::Io(value))
+    }
+}
+impl From<AstParseError> for Box<ConfigParseIoError> {
+    fn from(value: AstParseError) -> Self {
+        Box::new(ConfigParseIoError::Ast(value))
+    }
+}
+impl From<Box<ConfigParseError>> for Box<ConfigParseIoError> {
+    fn from(value: Box<ConfigParseError>) -> Self {
+        Box::new(ConfigParseIoError::Config(*value))
+    }
+}
+
 pub trait Config {
     type Err;
 
     fn parse_ast(&mut self, ast: AstTree) -> Result<(), Self::Err>;
     fn replay(&mut self, other: &Self);
 }
+
+pub trait ConfigExt: Config<Err = Box<ConfigParseError>> {
+    fn parse_bytes(&mut self, bytes: Bytes) -> Result<(), Box<ConfigParseBytesError>> {
+        let ast = AstTree::from_bytes(bytes)?;
+        self.parse_ast(ast)?;
+        Ok(())
+    }
+
+    fn parse_reader<R>(&mut self, reader: R) -> Result<(), Box<ConfigParseIoError>>
+    where
+        R: std::io::Read,
+    {
+        let ast = AstTree::from_reader(reader)??;
+        self.parse_ast(ast)?;
+        Ok(())
+    }
+
+    fn parse_file<P>(&mut self, path: P) -> Result<(), Box<ConfigParseIoError>>
+    where
+        P: AsRef<std::path::Path>,
+    {
+        let file = std::fs::File::open(path)?;
+        let ast = AstTree::from_reader(file)??;
+        self.parse_ast(ast)?;
+        Ok(())
+    }
+
+    fn from_bytes(bytes: Bytes) -> Result<Self, Box<ConfigParseBytesError>>
+    where
+        Self: Default,
+    {
+        let mut config = Self::default();
+        config.parse_bytes(bytes)?;
+        Ok(config)
+    }
+
+    fn from_reader<R>(reader: R) -> Result<Self, Box<ConfigParseIoError>>
+    where
+        R: std::io::Read,
+        Self: Default,
+    {
+        let mut config = Self::default();
+        config.parse_reader(reader)?;
+        Ok(config)
+    }
+
+    fn from_file<P>(path: P) -> Result<Self, Box<ConfigParseIoError>>
+    where
+        P: AsRef<std::path::Path>,
+        Self: Default,
+    {
+        let mut config = Self::default();
+        config.parse_file(path)?;
+        Ok(config)
+    }
+}
+impl<C> ConfigExt for C where C: Config<Err = Box<ConfigParseError>> {}
 
 pub trait ConfigGroup {
     type Err;
@@ -269,7 +369,7 @@ mod test {
                 .unwrap()
                 .into_bytes(),
         );
-        let ast = crate::ast::AstTree::parse_bytes(file_data);
+        let ast = crate::ast::AstTree::from_bytes(file_data);
         assert!(ast.is_ok(), "AST is not Ok: {ast:?}");
     }
 }
