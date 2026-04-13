@@ -6,8 +6,8 @@ use thiserror::Error;
 
 use crate::{
     ast::{
-        AstEntry, AstTree, OPERATOR_ADD, OPERATOR_ASSIGN, OPERATOR_ASSIGN_IF_UNDEFINED,
-        OPERATOR_CLEAR, OPERATOR_REMOVE, OPERATOR_RESET,
+        Ast, AstEntry, OPERATOR_ADD, OPERATOR_ASSIGN, OPERATOR_ASSIGN_IF_UNDEFINED, OPERATOR_CLEAR,
+        OPERATOR_REMOVE, OPERATOR_RESET,
     },
     ext::{IterEscaped, IterJoin},
 };
@@ -190,7 +190,7 @@ impl AstParser {
 }
 
 impl AstParse {
-    pub fn parse_into_tree(self) -> Result<AstTree, Box<AstParseError>> {
+    pub fn parse_into_ast(self) -> Result<Ast, Box<AstParseError>> {
         fn capture_string<'a>(
             source_buffer: &Bytes,
             captured: &Captures<'a>,
@@ -336,7 +336,7 @@ impl AstParse {
             }))
         } else {
             let tree = stack.pop().expect("stack initialized with one element");
-            Ok(AstTree::from_iter(tree.entries))
+            Ok(Ast::from_iter(tree.entries))
         }
     }
 }

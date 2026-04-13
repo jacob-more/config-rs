@@ -6,7 +6,7 @@ use proptest_derive::Arbitrary;
 
 use crate::{
     ast::{
-        AstEntry, AstTree,
+        Ast, AstEntry,
         parser::{
             AstParser, OPERATOR_BYTES_ADD, OPERATOR_BYTES_ASSIGN,
             OPERATOR_BYTES_ASSIGN_IF_UNDEFINED, OPERATOR_BYTES_CLEAR, OPERATOR_BYTES_REMOVE,
@@ -292,15 +292,15 @@ impl AsAstEntry for PropGroup {}
 proptest! {
     #[test]
     fn no_panics(input in ".*") {
-        let _ = AstParser::new().parse_bytes(input).parse_into_tree();
+        let _ = AstParser::new().parse_bytes(input).parse_into_ast();
     }
 
     #[test]
     fn single_key_op_unquoted_value(kov: PropKeyAssignValue) {
-        let expected_ast = AstTree {
+        let expected_ast = Ast {
             entries: vec![kov.as_ast_entry()]
         };
-        let ast = AstParser::new().parse_bytes(kov.as_input()).parse_into_tree();
+        let ast = AstParser::new().parse_bytes(kov.as_input()).parse_into_ast();
         assert!(ast.is_ok(), "error converting input to tree: {ast:?}");
         assert_eq!(ast.unwrap(), expected_ast);
     }
@@ -311,7 +311,7 @@ proptest! {
         sep: PropWhitespace,
         kov2: PropKeyAssignValue,
     ) {
-        let expected_ast = AstTree {
+        let expected_ast = Ast {
             entries: vec![
                 kov1.as_ast_entry(),
                 kov2.as_ast_entry(),
@@ -319,7 +319,7 @@ proptest! {
         };
         let ast = AstParser::new().parse_bytes(
             Vec::from_iter(kov1.bytes().chain(sep.bytes()).chain(kov2.bytes()))
-        ).parse_into_tree();
+        ).parse_into_ast();
         assert!(ast.is_ok(), "error converting input to tree: {ast:?}");
         assert_eq!(ast.unwrap(), expected_ast);
     }
@@ -330,7 +330,7 @@ proptest! {
         sep: PropWhitespace,
         kov2: PropKeyReset,
     ) {
-        let expected_ast = AstTree {
+        let expected_ast = Ast {
             entries: vec![
                 kov1.as_ast_entry(),
                 kov2.as_ast_entry(),
@@ -338,7 +338,7 @@ proptest! {
         };
         let ast = AstParser::new().parse_bytes(
             Vec::from_iter(kov1.bytes().chain(sep.bytes()).chain(kov2.bytes()))
-        ).parse_into_tree();
+        ).parse_into_ast();
         assert!(ast.is_ok(), "error converting input to tree: {ast:?}");
         assert_eq!(ast.unwrap(), expected_ast);
     }
@@ -349,7 +349,7 @@ proptest! {
         sep: PropWhitespace,
         kov2: PropGroup,
     ) {
-        let expected_ast = AstTree {
+        let expected_ast = Ast {
             entries: vec![
                 kov1.as_ast_entry(),
                 kov2.as_ast_entry(),
@@ -357,27 +357,27 @@ proptest! {
         };
         let ast = AstParser::new().parse_bytes(
             Vec::from_iter(kov1.bytes().chain(sep.bytes()).chain(kov2.bytes()))
-        ).parse_into_tree();
+        ).parse_into_ast();
         assert!(ast.is_ok(), "error converting input to tree: {ast:?}");
         assert_eq!(ast.unwrap(), expected_ast);
     }
 
     #[test]
     fn single_key_op_value(kov: PropKeyAssignValue) {
-        let expected_ast = AstTree {
+        let expected_ast = Ast {
             entries: vec![kov.as_ast_entry()]
         };
-        let ast = AstParser::new().parse_bytes(kov.as_input()).parse_into_tree();
+        let ast = AstParser::new().parse_bytes(kov.as_input()).parse_into_ast();
         assert!(ast.is_ok(), "error converting input to tree: {ast:?}");
         assert_eq!(ast.unwrap(), expected_ast);
     }
 
     #[test]
     fn single_key_reset(kov: PropKeyReset) {
-        let expected_ast = AstTree {
+        let expected_ast = Ast {
             entries: vec![kov.as_ast_entry()]
         };
-        let ast = AstParser::new().parse_bytes(kov.as_input()).parse_into_tree();
+        let ast = AstParser::new().parse_bytes(kov.as_input()).parse_into_ast();
         assert!(ast.is_ok(), "error converting input to tree: {ast:?}");
         assert_eq!(ast.unwrap(), expected_ast);
     }
@@ -387,7 +387,7 @@ proptest! {
         kov1: PropKeyReset,
         kov2: PropKeyAssignValue,
     ) {
-        let expected_ast = AstTree {
+        let expected_ast = Ast {
             entries: vec![
                 kov1.as_ast_entry(),
                 kov2.as_ast_entry(),
@@ -395,7 +395,7 @@ proptest! {
         };
         let ast = AstParser::new().parse_bytes(
             Vec::from_iter(kov1.bytes().chain(kov2.bytes()))
-        ).parse_into_tree();
+        ).parse_into_ast();
         assert!(ast.is_ok(), "error converting input to tree: {ast:?}");
         assert_eq!(ast.unwrap(), expected_ast);
     }
@@ -405,7 +405,7 @@ proptest! {
         kov1: PropKeyReset,
         kov2: PropKeyReset,
     ) {
-        let expected_ast = AstTree {
+        let expected_ast = Ast {
             entries: vec![
                 kov1.as_ast_entry(),
                 kov2.as_ast_entry(),
@@ -413,7 +413,7 @@ proptest! {
         };
         let ast = AstParser::new().parse_bytes(
             Vec::from_iter(kov1.bytes().chain(kov2.bytes()))
-        ).parse_into_tree();
+        ).parse_into_ast();
         assert!(ast.is_ok(), "error converting input to tree: {ast:?}");
         assert_eq!(ast.unwrap(), expected_ast);
     }
@@ -423,7 +423,7 @@ proptest! {
         kov1: PropKeyReset,
         kov2: PropGroup,
     ) {
-        let expected_ast = AstTree {
+        let expected_ast = Ast {
             entries: vec![
                 kov1.as_ast_entry(),
                 kov2.as_ast_entry(),
@@ -431,17 +431,17 @@ proptest! {
         };
         let ast = AstParser::new().parse_bytes(
             Vec::from_iter(kov1.bytes().chain(kov2.bytes()))
-        ).parse_into_tree();
+        ).parse_into_ast();
         assert!(ast.is_ok(), "error converting input to tree: {ast:?}");
         assert_eq!(ast.unwrap(), expected_ast);
     }
 
     #[test]
     fn single_group(kov: PropGroup) {
-        let expected_ast = AstTree {
+        let expected_ast = Ast {
             entries: vec![kov.as_ast_entry()]
         };
-        let ast = AstParser::new().parse_bytes(kov.as_input()).parse_into_tree();
+        let ast = AstParser::new().parse_bytes(kov.as_input()).parse_into_ast();
         assert!(ast.is_ok(), "error converting input to tree: {ast:?}");
         assert_eq!(ast.unwrap(), expected_ast);
     }
@@ -451,7 +451,7 @@ proptest! {
         kov1: PropGroup,
         kov2: PropGroup,
     ) {
-        let expected_ast = AstTree {
+        let expected_ast = Ast {
             entries: vec![
                 kov1.as_ast_entry(),
                 kov2.as_ast_entry(),
@@ -459,7 +459,7 @@ proptest! {
         };
         let ast = AstParser::new().parse_bytes(
             Vec::from_iter(kov1.bytes().chain(kov2.bytes()))
-        ).parse_into_tree();
+        ).parse_into_ast();
         assert!(ast.is_ok(), "error converting input to tree: {ast:?}");
         assert_eq!(ast.unwrap(), expected_ast);
     }

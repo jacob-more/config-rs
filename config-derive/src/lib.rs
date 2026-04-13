@@ -224,10 +224,10 @@ impl<'a> ConfigStruct<'a> {
             impl ::config::Config for #struct_ident {
                 type Err = ::std::boxed::Box<::config::ConfigParseError>;
 
-                fn parse_ast(&mut self, ast: ::config::ast::AstTree) -> ::std::result::Result<(), Self::Err> {
+                fn parse_ast(&mut self, ast: ::config::ast::Ast) -> ::std::result::Result<(), Self::Err> {
                     #(#key_bytes_instantiate_statement)*
 
-                    for entry in ::config::ast::AstTree::into_entries(ast) {
+                    for entry in ::config::ast::Ast::into_entries(ast) {
                         match entry {
                             ::config::ast::AstEntry::Group { key, group } => match ::std::ops::Deref::deref(&key) {
                                 #(#group_key_pattern => if let Err(error) = ::config::ConfigGroup::parse_ast_group(&mut self.#group_ident, key, group) {

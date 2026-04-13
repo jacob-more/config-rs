@@ -3,7 +3,7 @@ use std::{ffi::OsStr, io::Read, os::unix::ffi::OsStrExt};
 use rstest::rstest;
 
 use crate::ast::{
-    AstEntry, AstParser, AstTree,
+    Ast, AstEntry, AstParser,
     parser::{
         OPERATOR_BYTES_ADD, OPERATOR_BYTES_ASSIGN, OPERATOR_BYTES_ASSIGN_IF_UNDEFINED,
         OPERATOR_BYTES_CLEAR, OPERATOR_BYTES_REMOVE, OPERATOR_BYTES_RESET,
@@ -26,9 +26,9 @@ use crate::ast::{
 fn parse_empty_ast(#[case] input: &[u8]) {
     let ast = AstParser::new()
         .parse_bytes(input.to_vec())
-        .parse_into_tree();
+        .parse_into_ast();
     assert!(ast.is_ok(), "error converting input to tree: {ast:?}");
-    assert_eq!(ast.unwrap(), AstTree::new());
+    assert_eq!(ast.unwrap(), Ast::new());
 }
 
 #[rstest]
@@ -89,7 +89,7 @@ fn parse_key_assign_value(
 ) {
     use crate::ast::parser::AstParser;
 
-    let expected_ast = AstTree::from_iter(vec![match operator {
+    let expected_ast = Ast::from_iter(vec![match operator {
         OPERATOR_BYTES_ASSIGN => AstEntry::new_assign(ast_key, ast_value),
         OPERATOR_BYTES_ASSIGN_IF_UNDEFINED => AstEntry::new_assign_if_undefined(ast_key, ast_value),
         OPERATOR_BYTES_ADD => AstEntry::new_add(ast_key, ast_value),
@@ -110,7 +110,7 @@ fn parse_key_assign_value(
                 .chain(terminator),
         )
         .expect("Failed to read chain of raw bytes")
-        .parse_into_tree();
+        .parse_into_ast();
     assert!(ast.is_ok(), "error converting input to tree: {ast:?}");
     assert_eq!(ast.unwrap(), expected_ast);
 }
@@ -153,7 +153,7 @@ fn parse_key_reset_value(
 ) {
     use crate::ast::parser::AstParser;
 
-    let expected_ast = AstTree::from_iter(vec![match operator {
+    let expected_ast = Ast::from_iter(vec![match operator {
         OPERATOR_BYTES_RESET => AstEntry::new_reset(ast_key),
         OPERATOR_BYTES_CLEAR => AstEntry::new_clear(ast_key),
         _ => panic!(
@@ -171,7 +171,7 @@ fn parse_key_reset_value(
                 .chain(terminator),
         )
         .expect("Failed to read chain of raw bytes")
-        .parse_into_tree();
+        .parse_into_ast();
     assert!(ast.is_ok(), "error converting input to tree: {ast:?}");
     assert_eq!(ast.unwrap(), expected_ast);
 }
@@ -222,7 +222,7 @@ fn parse_key_group(
 ) {
     use crate::ast::parser::AstParser;
 
-    let expected_ast = AstTree::from_iter(vec![AstEntry::new_group(ast_group_key, vec![])]);
+    let expected_ast = Ast::from_iter(vec![AstEntry::new_group(ast_group_key, vec![])]);
 
     let ast = AstParser::new()
         .parse_reader(
@@ -236,7 +236,7 @@ fn parse_key_group(
                 .chain(terminator),
         )
         .expect("Failed to read chain of raw bytes")
-        .parse_into_tree();
+        .parse_into_ast();
     assert!(ast.is_ok(), "error converting input to tree: {ast:?}");
     assert_eq!(ast.unwrap(), expected_ast);
 }
@@ -244,43 +244,43 @@ fn parse_key_group(
 #[rstest]
 #[case(
         b"KEY=UNQUOTED_STRING",
-        AstTree::from_iter(vec![
+        Ast::from_iter(vec![
             AstEntry::new_assign(b"KEY".to_vec(), b"UNQUOTED_STRING".to_vec())
         ])
     )]
 #[case(
         b"KEY_WITH_UNDERSCORES=UNQUOTED_STRING/0123456789.",
-        AstTree::from_iter(vec![
+        Ast::from_iter(vec![
             AstEntry::new_assign(b"KEY_WITH_UNDERSCORES".to_vec(), b"UNQUOTED_STRING/0123456789.".to_vec())
         ])
     )]
 #[case(
         b"KEY=\"QUOTED String 0123456789 \\\\ \\\"\"",
-        AstTree::from_iter(vec![
+        Ast::from_iter(vec![
             AstEntry::new_assign(b"KEY".to_vec(), b"QUOTED String 0123456789 \\ \"".to_vec())
         ])
     )]
 #[case(
         b"KEY=UNQUOTED_STRING;",
-        AstTree::from_iter(vec![
+        Ast::from_iter(vec![
             AstEntry::new_assign(b"KEY".to_vec(), b"UNQUOTED_STRING".to_vec())
         ])
     )]
 #[case(
         b"KEY = UNQUOTED_STRING ;",
-        AstTree::from_iter(vec![
+        Ast::from_iter(vec![
             AstEntry::new_assign(b"KEY".to_vec(), b"UNQUOTED_STRING".to_vec())
         ])
     )]
 #[case(
         b"KEY\n=\n\t    UNQUOTED_STRING;",
-        AstTree::from_iter(vec![
+        Ast::from_iter(vec![
             AstEntry::new_assign(b"KEY".to_vec(), b"UNQUOTED_STRING".to_vec())
         ])
     )]
 #[case(
         b"KEY=UNQUOTED_STRING;KEY2=\"QUOTED String @\";",
-        AstTree::from_iter(vec![
+        Ast::from_iter(vec![
             AstEntry::new_assign(b"KEY".to_vec(), b"UNQUOTED_STRING".to_vec()),
             AstEntry::new_assign(b"KEY2".to_vec(), b"QUOTED String @".to_vec()),
         ])
@@ -290,7 +290,7 @@ fn parse_key_group(
         KEY+=UNQUOTED_STRING
         KEY=\"QUOTED String @\";
         ",
-        AstTree::from_iter(vec![
+        Ast::from_iter(vec![
             AstEntry::new_add(b"KEY".to_vec(), b"UNQUOTED_STRING".to_vec()),
             AstEntry::new_assign(b"KEY".to_vec(), b"QUOTED String @".to_vec()),
         ])
@@ -300,7 +300,7 @@ fn parse_key_group(
         KEY+=UNQUOTED_STRING
         KEY=\"QUOTED String @\";
         ",
-        AstTree::from_iter(vec![
+        Ast::from_iter(vec![
             AstEntry::new_add(b"KEY".to_vec(), b"UNQUOTED_STRING".to_vec()),
             AstEntry::new_assign(b"KEY".to_vec(), b"QUOTED String @".to_vec()),
         ])
@@ -311,7 +311,7 @@ fn parse_key_group(
         # comment between key-values
         KEY=\"QUOTED String @\";
         ",
-        AstTree::from_iter(vec![
+        Ast::from_iter(vec![
             AstEntry::new_add(b"KEY".to_vec(), b"UNQUOTED_STRING".to_vec()),
             AstEntry::new_assign(b"KEY".to_vec(), b"QUOTED String @".to_vec()),
         ])
@@ -322,7 +322,7 @@ fn parse_key_group(
         KEY=\"QUOTED String @\";
         # comment after key-value
         ",
-        AstTree::from_iter(vec![
+        Ast::from_iter(vec![
             AstEntry::new_add(b"KEY".to_vec(), b"UNQUOTED_STRING".to_vec()),
             AstEntry::new_assign(b"KEY".to_vec(), b"QUOTED String @".to_vec()),
         ])
@@ -332,7 +332,7 @@ fn parse_key_group(
         KEY+=UNQUOTED_STRING # comment on same line as key-value
         KEY=\"QUOTED String @\";# comment on same line as key-value
         ",
-        AstTree::from_iter(vec![
+        Ast::from_iter(vec![
             AstEntry::new_add(b"KEY".to_vec(), b"UNQUOTED_STRING".to_vec()),
             AstEntry::new_assign(b"KEY".to_vec(), b"QUOTED String @".to_vec()),
         ])
@@ -342,44 +342,44 @@ fn parse_key_group(
         KEY+=UNQUOTED_STRING# comment on same line as key-value
         KEY=\"QUOTED String @\"; # comment on same line as key-value
         ",
-        AstTree::from_iter(vec![
+        Ast::from_iter(vec![
             AstEntry::new_add(b"KEY".to_vec(), b"UNQUOTED_STRING".to_vec()),
             AstEntry::new_assign(b"KEY".to_vec(), b"QUOTED String @".to_vec()),
         ])
     )]
 #[case(
         b"KEY+=UNQUOTED_STRING",
-        AstTree::from_iter(vec![
+        Ast::from_iter(vec![
             AstEntry::new_add(b"KEY".to_vec(), b"UNQUOTED_STRING".to_vec())
         ])
     )]
 #[case(
         b"KEY-=UNQUOTED_STRING",
-        AstTree::from_iter(vec![
+        Ast::from_iter(vec![
             AstEntry::new_remove(b"KEY".to_vec(), b"UNQUOTED_STRING".to_vec())
         ])
     )]
 #[case(
         b"KEY:=UNQUOTED_STRING",
-        AstTree::from_iter(vec![
+        Ast::from_iter(vec![
             AstEntry::new_assign_if_undefined(b"KEY".to_vec(), b"UNQUOTED_STRING".to_vec())
         ])
     )]
 #[case(
         b"KEY!",
-        AstTree::from_iter(vec![
+        Ast::from_iter(vec![
             AstEntry::new_reset(b"KEY".to_vec())
         ])
     )]
 #[case(
         b"KEY !",
-        AstTree::from_iter(vec![
+        Ast::from_iter(vec![
             AstEntry::new_reset(b"KEY".to_vec())
         ])
     )]
 #[case(
         b"KEY !",
-        AstTree::from_iter(vec![
+        Ast::from_iter(vec![
             AstEntry::new_reset(b"KEY".to_vec())
         ])
     )]
@@ -387,33 +387,33 @@ fn parse_key_group(
         b"KEY!
         KEY=\"QUOTED String @\";
         ",
-        AstTree::from_iter(vec![
+        Ast::from_iter(vec![
             AstEntry::new_reset(b"KEY".to_vec()),
             AstEntry::new_assign(b"KEY".to_vec(), b"QUOTED String @".to_vec()),
         ])
     )]
 #[case(
         b"KEY!NEXT-=VALUE",
-        AstTree::from_iter(vec![
+        Ast::from_iter(vec![
             AstEntry::new_reset(b"KEY".to_vec()),
             AstEntry::new_remove(b"NEXT".to_vec(), b"VALUE".to_vec()),
         ])
     )]
 #[case(
         b"KEY!!",
-        AstTree::from_iter(vec![
+        Ast::from_iter(vec![
             AstEntry::new_clear(b"KEY".to_vec())
         ])
     )]
 #[case(
         b"KEY !!",
-        AstTree::from_iter(vec![
+        Ast::from_iter(vec![
             AstEntry::new_clear(b"KEY".to_vec())
         ])
     )]
 #[case(
         b"KEY !!",
-        AstTree::from_iter(vec![
+        Ast::from_iter(vec![
             AstEntry::new_clear(b"KEY".to_vec())
         ])
     )]
@@ -421,24 +421,24 @@ fn parse_key_group(
         b"KEY!!
         KEY=\"QUOTED String @\";
         ",
-        AstTree::from_iter(vec![
+        Ast::from_iter(vec![
             AstEntry::new_clear(b"KEY".to_vec()),
             AstEntry::new_assign(b"KEY".to_vec(), b"QUOTED String @".to_vec()),
         ])
     )]
 #[case(
         b"KEY!!NEXT-=VALUE",
-        AstTree::from_iter(vec![
+        Ast::from_iter(vec![
             AstEntry::new_clear(b"KEY".to_vec()),
             AstEntry::new_remove(b"NEXT".to_vec(), b"VALUE".to_vec()),
         ])
     )]
-fn parse_key_op_value(#[case] input: &[u8], #[case] output: AstTree) {
+fn parse_key_op_value(#[case] input: &[u8], #[case] output: Ast) {
     use crate::ast::parser::AstParser;
 
     let ast = AstParser::new()
         .parse_bytes(input.to_vec())
-        .parse_into_tree();
+        .parse_into_ast();
     assert!(ast.is_ok(), "error converting input to tree: {ast:?}");
     assert_eq!(ast.unwrap(), output);
 }
@@ -446,13 +446,13 @@ fn parse_key_op_value(#[case] input: &[u8], #[case] output: AstTree) {
 #[rstest]
 #[case(
         b"KEY: {}",
-        AstTree::from_iter(vec![
+        Ast::from_iter(vec![
             AstEntry::new_group(b"KEY".to_vec(), vec![])
         ])
     )]
 #[case(
         b"      \t_   \n: {\t     }",
-        AstTree::from_iter(vec![
+        Ast::from_iter(vec![
             AstEntry::new_group(b"_".to_vec(), vec![])
         ])
     )]
@@ -461,7 +461,7 @@ fn parse_key_op_value(#[case] input: &[u8], #[case] output: AstTree) {
             PART1 = VALUE;
             PART2 = other
         }",
-        AstTree::from_iter(vec![
+        Ast::from_iter(vec![
             AstEntry::new_group(
                 b"KEY".to_vec(),
                 vec![
@@ -477,7 +477,7 @@ fn parse_key_op_value(#[case] input: &[u8], #[case] output: AstTree) {
             PART1 = VALUE;
             PART2 = other
         }",
-        AstTree::from_iter(vec![
+        Ast::from_iter(vec![
             AstEntry::new_group(
                 b"KEY".to_vec(),
                 vec![
@@ -493,7 +493,7 @@ fn parse_key_op_value(#[case] input: &[u8], #[case] output: AstTree) {
             PART1 = VALUE;
             PART2 = other
         }",
-        AstTree::from_iter(vec![
+        Ast::from_iter(vec![
             AstEntry::new_group(
                 b"KEY".to_vec(),
                 vec![
@@ -509,7 +509,7 @@ fn parse_key_op_value(#[case] input: &[u8], #[case] output: AstTree) {
             # comment in the middle of a group
             PART2 = other
         }",
-        AstTree::from_iter(vec![
+        Ast::from_iter(vec![
             AstEntry::new_group(
                 b"KEY".to_vec(),
                 vec![
@@ -525,7 +525,7 @@ fn parse_key_op_value(#[case] input: &[u8], #[case] output: AstTree) {
             PART2 = other
             # comment at the end of a group
         }",
-        AstTree::from_iter(vec![
+        Ast::from_iter(vec![
             AstEntry::new_group(
                 b"KEY".to_vec(),
                 vec![
@@ -540,7 +540,7 @@ fn parse_key_op_value(#[case] input: &[u8], #[case] output: AstTree) {
             PART1 = VALUE;
             PART2 = other
         }# comment after a group",
-        AstTree::from_iter(vec![
+        Ast::from_iter(vec![
             AstEntry::new_group(
                 b"KEY".to_vec(),
                 vec![
@@ -550,10 +550,10 @@ fn parse_key_op_value(#[case] input: &[u8], #[case] output: AstTree) {
             )
         ])
     )]
-fn parse_group(#[case] input: &[u8], #[case] output: AstTree) {
+fn parse_group(#[case] input: &[u8], #[case] output: Ast) {
     let ast = AstParser::new()
         .parse_bytes(input.to_vec())
-        .parse_into_tree();
+        .parse_into_ast();
     assert!(ast.is_ok(), "error converting input to tree: {ast:?}");
     assert_eq!(ast.unwrap(), output);
 }

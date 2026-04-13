@@ -27,7 +27,7 @@ pub mod derive {
     pub use config_derive::*;
 }
 
-use crate::ast::{AstEntry, AstGroup, AstOperation, AstParseError, AstTree};
+use crate::ast::{Ast, AstEntry, AstGroup, AstOperation, AstParseError};
 #[derive(Debug)]
 pub enum Operation<T: ICval> {
     Assign(Cval<T>),
@@ -166,13 +166,13 @@ impl From<Box<ConfigParseError>> for Box<ConfigParseIoError> {
 pub trait Config {
     type Err;
 
-    fn parse_ast(&mut self, ast: AstTree) -> Result<(), Self::Err>;
+    fn parse_ast(&mut self, ast: Ast) -> Result<(), Self::Err>;
     fn replay(&mut self, other: &Self);
 }
 
 pub trait ConfigExt: Config<Err = Box<ConfigParseError>> {
     fn parse_bytes(&mut self, bytes: Bytes) -> Result<(), Box<ConfigParseBytesError>> {
-        let ast = AstTree::from_bytes(bytes)?;
+        let ast = Ast::from_bytes(bytes)?;
         self.parse_ast(ast)?;
         Ok(())
     }
@@ -181,7 +181,7 @@ pub trait ConfigExt: Config<Err = Box<ConfigParseError>> {
     where
         R: std::io::Read,
     {
-        let ast = AstTree::from_reader(reader)??;
+        let ast = Ast::from_reader(reader)??;
         self.parse_ast(ast)?;
         Ok(())
     }
@@ -191,7 +191,7 @@ pub trait ConfigExt: Config<Err = Box<ConfigParseError>> {
         P: AsRef<std::path::Path>,
     {
         let file = std::fs::File::open(path)?;
-        let ast = AstTree::from_reader(file)??;
+        let ast = Ast::from_reader(file)??;
         self.parse_ast(ast)?;
         Ok(())
     }
@@ -369,7 +369,7 @@ mod test {
                 .unwrap()
                 .into_bytes(),
         );
-        let ast = crate::ast::AstTree::from_bytes(file_data);
+        let ast = crate::ast::Ast::from_bytes(file_data);
         assert!(ast.is_ok(), "AST is not Ok: {ast:?}");
     }
 }

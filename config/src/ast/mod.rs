@@ -19,7 +19,7 @@ pub const OPERATOR_CLEAR: &str = "!!";
 pub struct AstParseError(#[from] Box<parser::AstParseError>);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AstTree {
+pub struct Ast {
     entries: Vec<AstEntry>,
 }
 
@@ -52,7 +52,7 @@ impl AstGroup {
     }
 }
 
-impl AstTree {
+impl Ast {
     pub const fn new() -> Self {
         Self {
             entries: Vec::new(),
@@ -73,7 +73,7 @@ impl AstTree {
     {
         Ok(AstParser::new()
             .parse_reader(reader)?
-            .parse_into_tree()
+            .parse_into_ast()
             .map_err(|e| e.into()))
     }
 
@@ -81,17 +81,17 @@ impl AstTree {
     where
         Bytes: From<B>,
     {
-        Ok(AstParser::new().parse_bytes(bytes).parse_into_tree()?)
+        Ok(AstParser::new().parse_bytes(bytes).parse_into_ast()?)
     }
 }
 
-impl Default for AstTree {
+impl Default for Ast {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl FromIterator<AstEntry> for AstTree {
+impl FromIterator<AstEntry> for Ast {
     fn from_iter<T: IntoIterator<Item = AstEntry>>(entries: T) -> Self {
         Self {
             entries: entries.into_iter().collect(),
@@ -167,7 +167,7 @@ impl AstEntry {
     }
 }
 
-impl Display for AstTree {
+impl Display for Ast {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.entries.iter().join(' '))
     }
