@@ -386,7 +386,7 @@ impl<'a> ConfigStruct<'a> {
                             ::config::ast::AstEntry::Group { key, group } => match ::std::ops::Deref::deref(&key) {
                                 #(#group_key_pattern => if let Err(error) = ::config::ConfigGroup::parse_ast_group(&mut self.#group_ident, key, group) {
                                     return Err(::std::boxed::Box::new(
-                                        ::config::ConfigParseGroupError::Group { group: parent_key, error: *error }
+                                        ::config::ConfigParseGroupError::Group { group: parent_key, error }
                                     ));
                                 },)*
                                 #ignore_unmatched_keys
