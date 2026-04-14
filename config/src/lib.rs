@@ -176,14 +176,14 @@ pub trait Config {
     fn replay(&mut self, other: &Self);
 }
 
-pub trait ConfigExt: Config<Err = Box<ConfigParseError>> {
-    fn parse_bytes(&mut self, bytes: Bytes) -> Result<(), Box<ConfigParseBytesError>> {
+pub trait ConfigExt: Config<Err = ConfigParseError> {
+    fn parse_bytes(&mut self, bytes: Bytes) -> Result<(), ConfigParseBytesError> {
         let ast = Ast::from_bytes(bytes)?;
         self.parse_ast(ast)?;
         Ok(())
     }
 
-    fn parse_reader<R>(&mut self, reader: R) -> Result<(), Box<ConfigParseIoError>>
+    fn parse_reader<R>(&mut self, reader: R) -> Result<(), ConfigParseIoError>
     where
         R: std::io::Read,
     {
@@ -192,7 +192,7 @@ pub trait ConfigExt: Config<Err = Box<ConfigParseError>> {
         Ok(())
     }
 
-    fn parse_file<P>(&mut self, path: P) -> Result<(), Box<ConfigParseIoError>>
+    fn parse_file<P>(&mut self, path: P) -> Result<(), ConfigParseIoError>
     where
         P: AsRef<std::path::Path>,
     {
@@ -202,7 +202,7 @@ pub trait ConfigExt: Config<Err = Box<ConfigParseError>> {
         Ok(())
     }
 
-    fn from_bytes(bytes: Bytes) -> Result<Self, Box<ConfigParseBytesError>>
+    fn from_bytes(bytes: Bytes) -> Result<Self, ConfigParseBytesError>
     where
         Self: Default,
     {
@@ -211,7 +211,7 @@ pub trait ConfigExt: Config<Err = Box<ConfigParseError>> {
         Ok(config)
     }
 
-    fn from_reader<R>(reader: R) -> Result<Self, Box<ConfigParseIoError>>
+    fn from_reader<R>(reader: R) -> Result<Self, ConfigParseIoError>
     where
         R: std::io::Read,
         Self: Default,
@@ -221,7 +221,7 @@ pub trait ConfigExt: Config<Err = Box<ConfigParseError>> {
         Ok(config)
     }
 
-    fn from_file<P>(path: P) -> Result<Self, Box<ConfigParseIoError>>
+    fn from_file<P>(path: P) -> Result<Self, ConfigParseIoError>
     where
         P: AsRef<std::path::Path>,
         Self: Default,
@@ -231,7 +231,7 @@ pub trait ConfigExt: Config<Err = Box<ConfigParseError>> {
         Ok(config)
     }
 }
-impl<C> ConfigExt for C where C: Config<Err = Box<ConfigParseError>> {}
+impl<C> ConfigExt for C where C: Config<Err = ConfigParseError> {}
 
 pub trait ConfigGroup {
     type Err;
@@ -315,9 +315,9 @@ where
 
 impl<C> Config for HashMap<Bytes, C>
 where
-    C: ConfigGroup<Err = Box<ConfigParseError>>,
+    C: ConfigGroup<Err = ConfigParseError>,
 {
-    type Err = Box<ConfigParseError>;
+    type Err = ConfigParseError;
 
     fn parse_ast_entry(&mut self, entry: AstEntry) -> Result<(), Self::Err> {
         match entry {
@@ -327,9 +327,10 @@ where
                     .parse_ast_group(key, group)?;
             }
             AstEntry::Operation { key, operation } => {
-                return Err(Box::new(ConfigParseError::UnknownOperationKey(
-                    AstEntry::Operation { key, operation },
-                )));
+                return Err(ConfigParseError::UnknownOperationKey(AstEntry::Operation {
+                    key,
+                    operation,
+                }));
             }
         }
         Ok(())
@@ -346,9 +347,9 @@ where
 
 impl<C> ConfigGroup for HashMap<Bytes, C>
 where
-    C: ConfigGroup<Err = Box<ConfigParseGroupError>>,
+    C: ConfigGroup<Err = ConfigParseGroupError>,
 {
-    type Err = Box<ConfigParseGroupError>;
+    type Err = ConfigParseGroupError;
 
     fn new(_key: bytes::Bytes) -> Self {
         Self::default()
@@ -364,10 +365,10 @@ where
                     .parse_ast_group(key, group)?;
             }
             AstEntry::Operation { key, operation } => {
-                return Err(Box::new(ConfigParseGroupError::UnknownOperationKey {
+                return Err(ConfigParseGroupError::UnknownOperationKey {
                     group: parent_group.clone(),
                     entry: AstEntry::Operation { key, operation },
-                }));
+                });
             }
         }
         Ok(())
