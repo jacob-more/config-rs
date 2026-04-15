@@ -1,4 +1,9 @@
-use std::{collections::HashMap, ffi::OsStr, fmt::Debug, os::unix::ffi::OsStrExt};
+use std::{
+    collections::HashMap,
+    ffi::OsStr,
+    fmt::{Debug, Display},
+    os::unix::ffi::OsStrExt,
+};
 
 use bytes::Bytes;
 use thiserror::Error;
@@ -6,7 +11,8 @@ use thiserror::Error;
 pub mod ast;
 pub mod ext;
 
-pub mod cval;
+mod cval;
+mod fmt;
 pub(crate) mod header;
 pub(crate) mod history;
 
@@ -16,6 +22,7 @@ mod set;
 mod value;
 
 pub use cval::*;
+pub use fmt::*;
 
 pub use access_control_list::*;
 pub use list::*;
@@ -27,7 +34,10 @@ pub mod derive {
     pub use config_derive::*;
 }
 
-use crate::ast::{Ast, AstEntry, AstGroup, AstOperation, AstParseError};
+use crate::{
+    ast::{Ast, AstEntry, AstGroup, AstOperation, AstParseError},
+    ext::IterJoin,
+};
 #[derive(Debug)]
 pub enum Operation<T: ICval> {
     Assign(Cval<T>),
@@ -174,6 +184,7 @@ pub trait Config {
     }
     fn parse_ast_entry(&mut self, entry: AstEntry) -> Result<(), Self::Err>;
     fn replay(&mut self, other: &Self);
+    fn display(&self, fmt: ConfigFmt) -> impl Display;
 }
 
 pub trait ConfigExt: Config<Err = ConfigParseError> {
@@ -245,6 +256,7 @@ pub trait ConfigGroup {
     }
     fn parse_ast_entry(&mut self, key: &bytes::Bytes, entry: AstEntry) -> Result<(), Self::Err>;
     fn replay(&mut self, other: &Self);
+    fn display(&self, fmt: ConfigFmt) -> impl Display;
 }
 
 pub trait ConfigOperation<T>
@@ -263,6 +275,9 @@ where
     fn history<'a>(&'a self) -> impl Iterator<Item = &'a Operation<T>>
     where
         T: 'a;
+    fn display(&self, fmt: ConfigFmt) -> impl Display
+    where
+        Cval<T>: Display;
 }
 
 pub trait ConfigOperationExt<T>: ConfigOperation<T>
@@ -343,6 +358,18 @@ where
                 .replay(group);
         }
     }
+
+    fn display(&self, fmt: ConfigFmt) -> impl Display {
+        std::fmt::from_fn(move |f| {
+            write!(
+                f,
+                "{}",
+                self.values()
+                    .map(|group| group.display(fmt.clone()))
+                    .join('\n')
+            )
+        })
+    }
 }
 
 impl<C> ConfigGroup for HashMap<Bytes, C>
@@ -380,6 +407,18 @@ where
                 .or_insert_with(|| ConfigGroup::new(key.clone()))
                 .replay(group);
         }
+    }
+
+    fn display(&self, fmt: ConfigFmt) -> impl Display {
+        std::fmt::from_fn(move |f| {
+            write!(
+                f,
+                "{}",
+                self.values()
+                    .map(|group| group.display(fmt.clone()))
+                    .join('\n')
+            )
+        })
     }
 }
 

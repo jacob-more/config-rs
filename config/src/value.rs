@@ -1,6 +1,8 @@
 use std::fmt::Display;
 
-use crate::{ConfigOperation, Cval, ICval, Operation, ast::OPERATOR_ASSIGN, header::ConfigHeader};
+use crate::{
+    ConfigFmt, ConfigOperation, Cval, ICval, Operation, ast::OPERATOR_ASSIGN, header::ConfigHeader,
+};
 
 #[derive(Debug)]
 pub struct ConfigValue<T: ICval> {
@@ -109,6 +111,21 @@ where
     {
         self.header.history().history()
     }
+
+    fn display(&self, fmt: ConfigFmt) -> impl Display
+    where
+        Cval<T>: Display,
+    {
+        std::fmt::from_fn(move |f| {
+            let indent = fmt.indent();
+            write!(
+                f,
+                "{indent}{} {OPERATOR_ASSIGN} {};",
+                self.key(),
+                self.value()
+            )
+        })
+    }
 }
 
 impl<T> Clone for ConfigValue<T>
@@ -128,8 +145,9 @@ impl<T> Display for ConfigValue<T>
 where
     T: ICval,
     Cval<T>: Display,
+    T::Repr: PartialEq,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{} {OPERATOR_ASSIGN} {};", self.key(), self.value())
+        write!(f, "{}", self.display(ConfigFmt::new()))
     }
 }

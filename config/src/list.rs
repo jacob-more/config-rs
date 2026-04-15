@@ -1,7 +1,7 @@
 use std::fmt::Display;
 
 use crate::{
-    ConfigOperation, Cval, ICval, Operation,
+    ConfigFmt, ConfigOperation, Cval, ICval, Operation,
     ast::{OPERATOR_ADD, OPERATOR_ASSIGN, OPERATOR_CLEAR},
     header::ConfigHeader,
 };
@@ -126,6 +126,26 @@ where
     {
         self.header.history().history()
     }
+
+    fn display(&self, fmt: ConfigFmt) -> impl Display
+    where
+        Cval<T>: Display,
+    {
+        std::fmt::from_fn(move |f| {
+            let indent = fmt.indent();
+            let mut values = self.values();
+            match values.next() {
+                Some(first) => {
+                    write!(f, "{indent}{} {OPERATOR_ASSIGN} {first};", self.key())?;
+                    for value in values {
+                        write!(f, "\n{indent}{} {OPERATOR_ADD} {value};", self.key())?;
+                    }
+                    Ok(())
+                }
+                None => write!(f, "{indent}{} {OPERATOR_CLEAR};", self.key()),
+            }
+        })
+    }
 }
 
 impl<T> Clone for ConfigList<T>
@@ -145,18 +165,9 @@ impl<T> Display for ConfigList<T>
 where
     T: ICval,
     Cval<T>: Display,
+    T::Repr: PartialEq,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let mut values = self.values();
-        match values.next() {
-            Some(first) => {
-                write!(f, "{} {OPERATOR_ASSIGN} {first};", self.key())?;
-                for value in values {
-                    write!(f, " {} {OPERATOR_ADD} {value};", self.key())?;
-                }
-                Ok(())
-            }
-            None => write!(f, "{} {OPERATOR_CLEAR};", self.key()),
-        }
+        write!(f, "{}", self.display(ConfigFmt::new()))
     }
 }

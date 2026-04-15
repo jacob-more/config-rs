@@ -1,7 +1,7 @@
 use std::fmt::Display;
 
 use crate::{
-    ConfigOperation, Cval, ICval, Operation,
+    ConfigFmt, ConfigOperation, Cval, ICval, Operation,
     ast::{OPERATOR_ADD, OPERATOR_ASSIGN, OPERATOR_CLEAR, OPERATOR_REMOVE},
     header::ConfigHeader,
 };
@@ -148,6 +148,40 @@ where
     {
         self.header.history().history()
     }
+
+    fn display(&self, fmt: ConfigFmt) -> impl Display
+    where
+        Cval<T>: Display,
+    {
+        std::fmt::from_fn(move |f| {
+            let indent = fmt.indent();
+            let mut values = self.values();
+            match values.next() {
+                Some((first_action, first_value)) => {
+                    match first_action {
+                        AclAction::Allow => {
+                            write!(f, "{indent}{} {OPERATOR_ASSIGN} {first_value};", self.key())?
+                        }
+                        AclAction::Deny => {
+                            write!(f, "{indent}{} {OPERATOR_REMOVE} {first_value};", self.key())?
+                        }
+                    }
+                    for (action, value) in values {
+                        match action {
+                            AclAction::Allow => {
+                                write!(f, "\n{indent}{} {OPERATOR_ADD} {value};", self.key())?
+                            }
+                            AclAction::Deny => {
+                                write!(f, "\n{indent}{} {OPERATOR_REMOVE} {value};", self.key())?
+                            }
+                        }
+                    }
+                    Ok(())
+                }
+                None => write!(f, "{indent}{} {OPERATOR_CLEAR};", self.key()),
+            }
+        })
+    }
 }
 
 impl<T> Clone for ConfigAcl<T>
@@ -165,30 +199,11 @@ where
 
 impl<T> Display for ConfigAcl<T>
 where
-    T: ICval,
     Cval<T>: Display,
+    T: ICval,
+    T::Repr: PartialEq,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let mut values = self.values();
-        match values.next() {
-            Some((first_action, first_value)) => {
-                match first_action {
-                    AclAction::Allow => {
-                        write!(f, "{} {OPERATOR_ASSIGN} {first_value};", self.key())?
-                    }
-                    AclAction::Deny => {
-                        write!(f, "{} {OPERATOR_REMOVE} {first_value};", self.key())?
-                    }
-                }
-                for (action, value) in values {
-                    match action {
-                        AclAction::Allow => write!(f, "{} {OPERATOR_ADD} {value};", self.key())?,
-                        AclAction::Deny => write!(f, "{} {OPERATOR_REMOVE} {value};", self.key())?,
-                    }
-                }
-                Ok(())
-            }
-            None => write!(f, "{} {OPERATOR_CLEAR};", self.key()),
-        }
+        write!(f, "{}", self.display(ConfigFmt::new()))
     }
 }

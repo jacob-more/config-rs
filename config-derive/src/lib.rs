@@ -246,6 +246,8 @@ impl<'a> ConfigStruct<'a> {
             }
         });
 
+        let display_body = self.generate_impl_display_body(Some(quote! { &fmt }));
+
         let ignore_unmatched_keys = match self.attributes.exhaustive {
             true => quote! {},
             false => quote! { _ => (), },
@@ -313,6 +315,12 @@ impl<'a> ConfigStruct<'a> {
                 fn replay(&mut self, other: &Self) {
                     #(#replay_field)*
                 }
+
+                fn display(&self, fmt: ::config::ConfigFmt) -> impl ::std::fmt::Display {
+                    ::std::fmt::from_fn(move |f| {
+                        #display_body
+                    })
+                }
             }
         }
     }
@@ -330,6 +338,10 @@ impl<'a> ConfigStruct<'a> {
             .filter(|f| matches!(f.field_type(), FieldType::Group | FieldType::Config))
             .map(|f| f.key_bytes().statement_instantiate());
 
+        let group_keys = self
+            .fields
+            .iter()
+            .filter(|f| matches!(f.field_type(), FieldType::GroupKey));
         let flat_groups = self
             .fields
             .iter()
@@ -346,6 +358,13 @@ impl<'a> ConfigStruct<'a> {
             .fields
             .iter()
             .filter(|f| matches!(f.field_type(), FieldType::Config));
+
+        let group_key = group_keys.map(|f| {
+            let ident = f.ident();
+            quote! {
+                self.#ident = ::std::clone::Clone::clone(&key);
+            }
+        });
 
         let flat_ident = flat_groups.map(|f| f.ident());
 
@@ -387,6 +406,8 @@ impl<'a> ConfigStruct<'a> {
             }
         });
 
+        let display_body = self.generate_impl_display_body(Some(quote! { &fmt }));
+
         let ignore_unmatched_keys = match self.attributes.exhaustive {
             true => quote! {},
             false => quote! { _ => (), },
@@ -403,6 +424,7 @@ impl<'a> ConfigStruct<'a> {
                 fn parse_ast_entry(&mut self, key: &::config::derive::Bytes, entry: ::config::ast::AstEntry) -> ::std::result::Result<(), Self::Err> {
                     #(#key_bytes_instantiate_statement)*
 
+                    #(#group_key)*
                     let parent_key = key;
 
                     #(
@@ -419,13 +441,13 @@ impl<'a> ConfigStruct<'a> {
                         ::config::ast::AstEntry::Group { key, group } => match ::std::ops::Deref::deref(&key) {
                             #(#group_key_pattern => if let Err(error) = ::config::ConfigGroup::parse_ast_group(&mut self.#group_ident, key, group) {
                                 return Err(::config::ConfigParseGroupError::Group {
-                                    group: parent_key.clone(),
+                                    group: ::std::clone::Clone::clone(&parent_key),
                                     error: ::std::boxed::Box::new(error),
                                 });
                             },)*
                             #(_ => if let Err(error) = ::config::ConfigGroup::parse_ast_group(&mut self.#any_group_ident, key, group) {
                                 return Err(::config::ConfigParseGroupError::Group {
-                                    group: parent_key.clone(),
+                                    group: ::std::clone::Clone::clone(&parent_key),
                                     error: ::std::boxed::Box::new(error),
                                 });
                             },)*
@@ -433,12 +455,12 @@ impl<'a> ConfigStruct<'a> {
                             _ => {
                                 if <[&[u8]]>::contains(&#config_key_array, &::std::ops::Deref::deref(&key)) {
                                     return Err(::config::ConfigParseGroupError::UnknownGroupKey {
-                                        group: parent_key.clone(),
-                                        entry: ::config::ast::AstEntry::Group { key, group }
+                                        group: ::std::clone::Clone::clone(&parent_key),
+                                        entry: ::config::ast::AstEntry::Group { key, group },
                                     });
                                 } else {
                                     return Err(::config::ConfigParseGroupError::UnknownKey {
-                                        group: parent_key.clone(),
+                                        group: ::std::clone::Clone::clone(&parent_key),
                                         entry: ::config::ast::AstEntry::Group { key, group },
                                     });
                                 }
@@ -447,20 +469,20 @@ impl<'a> ConfigStruct<'a> {
                         ::config::ast::AstEntry::Operation { key, operation } => match ::std::ops::Deref::deref(&key) {
                             #(#config_key_pattern => if let Err(error) = ::config::ConfigOperationExt::parse_ast_entry(&mut self.#config_ident, key, operation) {
                                 return Err(::config::ConfigParseGroupError::Operation {
-                                    group: parent_key.clone(),
-                                    error
+                                    group: ::std::clone::Clone::clone(&parent_key),
+                                    error,
                                 });
                             },)*
                             #ignore_unmatched_keys
                             _ => {
                                 if <[&[u8]]>::contains(&#group_key_array, &::std::ops::Deref::deref(&key)) {
                                     return Err(::config::ConfigParseGroupError::UnknownOperationKey {
-                                        group: parent_key.clone(),
+                                        group: ::std::clone::Clone::clone(&parent_key),
                                         entry: ::config::ast::AstEntry::Operation { key, operation },
                                     });
                                 } else {
                                     return Err(::config::ConfigParseGroupError::UnknownKey {
-                                        group: parent_key.clone(),
+                                        group: ::std::clone::Clone::clone(&parent_key),
                                         entry: ::config::ast::AstEntry::Operation { key, operation },
                                     });
                                 }
@@ -473,77 +495,129 @@ impl<'a> ConfigStruct<'a> {
                 fn replay(&mut self, other: &Self) {
                     #(#replay_field)*
                 }
+
+                fn display(&self, fmt: ::config::ConfigFmt) -> impl ::std::fmt::Display {
+                    ::std::fmt::from_fn(move |f| {
+                        #display_body
+                    })
+                }
+            }
+        }
+    }
+
+    fn generate_impl_display_body(&self, fmt: Option<TokenStream>) -> TokenStream {
+        let group_key = self
+            .fields
+            .iter()
+            .find(|f| matches!(f.field_type(), FieldType::GroupKey))
+            .map(|f| {
+                let key_ident = f.ident();
+                quote! {
+                    ::std::ffi::OsStr::display(
+                        ::std::os::unix::ffi::OsStrExt::from_bytes(
+                            ::std::ops::Deref::deref(&self.#key_ident)
+                        )
+                    )
+                }
+            });
+        let fields = self
+            .fields
+            .iter()
+            .filter_map(|f| {
+                let ident = f.ident();
+                match f.field_type() {
+                    FieldType::GroupKey => None,
+                    FieldType::Config => Some(quote! {
+                        ::config::ConfigOperation::display(
+                            &self.#ident,
+                            ::config::ConfigFmt::next(&fmt),
+                        )
+                    }),
+                    FieldType::Group | FieldType::AnyGroup => Some(quote! {
+                        ::config::ConfigGroup::display(
+                            &self.#ident,
+                            ::config::ConfigFmt::next(&fmt),
+                        )
+                    }),
+                    FieldType::Flatten => Some(quote! {
+                        ::config::ConfigGroup::display(
+                            &self.#ident,
+                            ::config::ConfigFmt::with_flatten(
+                                ::config::ConfigFmt::next(&fmt),
+                            )
+                        )
+                    }),
+                }
+            })
+            .collect::<Vec<_>>();
+
+        let fmt = fmt.unwrap_or_else(|| {
+            if group_key.is_some() {
+                quote! {
+                    ::config::ConfigFmt::new()
+                }
+            } else {
+                quote! {
+                    ::config::ConfigFmt::with_flatten(
+                        ::config::ConfigFmt::new()
+                    )
+                }
+            }
+        });
+
+        match (group_key, fields.split_last()) {
+            (Some(group_key), Some((last_field, fields))) => {
+                quote! {
+                    let fmt = #fmt;
+                    let indent = ::config::ConfigFmt::indent(&fmt);
+                    let inner_fmt = ::config::ConfigFmt::next(&fmt);
+
+                    if !::config::ConfigFmt::flatten(&fmt) {
+                        ::core::writeln!(f, "{indent}{}: {{", #group_key)?;
+                    }
+                    #(::core::writeln!(f, "{}", #fields)?;)*
+                    ::core::write!(f, "{}", #last_field)?;
+                    if !::config::ConfigFmt::flatten(&fmt) {
+                        ::core::write!(f, "\n{indent}}}")?;
+                    }
+                    ::std::result::Result::Ok(())
+                }
+            }
+            (Some(group_key), None) => {
+                quote! {
+                    let fmt = #fmt;
+                    let indent = ::config::ConfigFmt::indent(&fmt);
+
+                    if !::config::ConfigFmt::flatten(&fmt) {
+                        ::core::write!(f, "{indent}{}: {{ }}", #group_key)?;
+                    }
+                    ::std::result::Result::Ok(())
+                }
+            }
+            (None, Some((last_field, fields))) => {
+                quote! {
+                    let fmt = #fmt;
+
+                    #(::core::writeln!(f, "{}", #fields)?;)*
+                    ::core::write!(f, "{}", #last_field)
+                }
+            }
+            (None, None) => {
+                quote! {
+                    ::std::result::Result::Ok(())
+                }
             }
         }
     }
 
     fn generate_impl_display(&self) -> TokenStream {
         let struct_ident = &self.data.ident;
-        let group_key = self
-            .fields
-            .iter()
-            .find(|f| matches!(f.field_type(), FieldType::GroupKey));
-        let fields = self
-            .fields
-            .iter()
-            .filter(|f| !matches!(f.field_type(), FieldType::GroupKey))
-            .collect::<Vec<_>>();
+        let body = self.generate_impl_display_body(None);
 
-        match (group_key, fields.split_last()) {
-            (Some(group_key), Some(_)) => {
-                let key_ident = group_key.ident();
-                let ident = fields.iter().map(|f| f.ident());
-                quote! {
-                    impl ::std::fmt::Display for #struct_ident {
-                        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
-                            writeln!(f, "{}: {{",
-                                ::std::ffi::OsStr::display(
-                                    ::std::os::unix::ffi::OsStrExt::from_bytes(
-                                        ::std::ops::Deref::deref(&self.#key_ident)
-                                    )
-                                )
-                            )?;
-                            #(writeln!(f, "    {}", &self.#ident)?;)*
-                            write!(f, "}}")
-                        }
-                    }
-                }
-            }
-            (Some(group_key), None) => {
-                let key_ident = group_key.ident();
-                quote! {
-                    impl ::std::fmt::Display for #struct_ident {
-                        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
-                            write!(f, "{}: {{ }}",
-                                ::std::ffi::OsStr::display(
-                                    ::std::os::unix::ffi::OsStrExt::from_bytes(
-                                        ::std::ops::Deref::deref(&self.#key_ident)
-                                    )
-                                )
-                            )
-                        }
-                    }
-                }
-            }
-            (None, Some((last_field, fields))) => {
-                let ident = fields.iter().map(|f| f.ident());
-                let last_ident = last_field.ident();
-                quote! {
-                    impl ::std::fmt::Display for #struct_ident {
-                        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
-                            #(writeln!(f, "{}", &self.#ident)?;)*
-                            write!(f, "{}", &self.#last_ident)
-                        }
-                    }
-                }
-            }
-            (None, None) => {
-                quote! {
-                    impl ::std::fmt::Display for #struct_ident {
-                        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
-                            Ok(())
-                        }
-                    }
+        quote! {
+            impl ::std::fmt::Display for #struct_ident {
+                fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+                    #body
                 }
             }
         }
