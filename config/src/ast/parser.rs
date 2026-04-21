@@ -1,4 +1,4 @@
-use std::{ffi::OsStr, fmt::from_fn, os::unix::ffi::OsStrExt, sync::LazyLock};
+use std::{convert::Infallible, ffi::OsStr, fmt::from_fn, os::unix::ffi::OsStrExt, sync::LazyLock};
 
 use bytes::Bytes;
 use regex::bytes::{Captures, Match, Regex};
@@ -61,6 +61,11 @@ pub enum AstParseError {
     UnmatchedGroupClose { line: usize, group_close: Bytes },
     #[error("unknown sequence on line {line}\n{}", OsStr::from_bytes(sequence).display())]
     UnknownSequence { line: usize, sequence: Bytes },
+}
+impl From<Infallible> for AstParseError {
+    fn from(value: Infallible) -> Self {
+        match value {}
+    }
 }
 
 impl Default for AstParser {

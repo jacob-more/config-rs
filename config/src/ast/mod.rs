@@ -1,4 +1,4 @@
-use std::{ffi::OsStr, fmt::Display, os::unix::ffi::OsStrExt};
+use std::{convert::Infallible, ffi::OsStr, fmt::Display, os::unix::ffi::OsStrExt};
 
 use bytes::Bytes;
 use thiserror::Error;
@@ -17,6 +17,11 @@ pub const OPERATOR_CLEAR: &str = "!!";
 #[derive(Debug, Error)]
 #[error(transparent)]
 pub struct AstParseError(#[from] Box<parser::AstParseError>);
+impl From<Infallible> for AstParseError {
+    fn from(value: Infallible) -> Self {
+        match value {}
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Ast {

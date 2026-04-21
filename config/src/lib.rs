@@ -1,5 +1,6 @@
 use std::{
     collections::HashMap,
+    convert::Infallible,
     ffi::OsStr,
     fmt::{Debug, Display},
     os::unix::ffi::OsStrExt,
@@ -78,6 +79,11 @@ enum ReprParseConfigOperationError {
     #[error("char must be represented by exactly one character")]
     ParseChar,
 }
+impl From<Infallible> for ReprParseConfigOperationError {
+    fn from(value: Infallible) -> Self {
+        match value {}
+    }
+}
 
 #[derive(Debug, Error)]
 #[error(transparent)]
@@ -95,6 +101,11 @@ impl_from_config_parse_error!(std::num::ParseIntError);
 impl_from_config_parse_error!(std::num::ParseFloatError);
 impl_from_config_parse_error!(std::str::Utf8Error);
 impl_from_config_parse_error!(std::net::AddrParseError);
+impl From<Infallible> for ConfigParseOperationError {
+    fn from(value: Infallible) -> Self {
+        match value {}
+    }
+}
 
 #[derive(Debug, Error)]
 pub enum ConfigParseError {
@@ -108,6 +119,11 @@ pub enum ConfigParseError {
     Group(#[from] ConfigParseGroupError),
     #[error(transparent)]
     Operation(#[from] ConfigParseOperationError),
+}
+impl From<Infallible> for ConfigParseError {
+    fn from(value: Infallible) -> Self {
+        match value {}
+    }
 }
 
 #[derive(Debug, Error)]
@@ -129,6 +145,11 @@ pub enum ConfigParseGroupError {
         error: ConfigParseOperationError,
     },
 }
+impl From<Infallible> for ConfigParseGroupError {
+    fn from(value: Infallible) -> Self {
+        match value {}
+    }
+}
 
 #[derive(Debug, Error)]
 pub enum ConfigParseBytesError {
@@ -145,6 +166,11 @@ impl From<AstParseError> for Box<ConfigParseBytesError> {
 impl From<Box<ConfigParseError>> for Box<ConfigParseBytesError> {
     fn from(value: Box<ConfigParseError>) -> Self {
         Box::new(ConfigParseBytesError::Config(*value))
+    }
+}
+impl From<Infallible> for ConfigParseBytesError {
+    fn from(value: Infallible) -> Self {
+        match value {}
     }
 }
 
@@ -170,6 +196,11 @@ impl From<AstParseError> for Box<ConfigParseIoError> {
 impl From<Box<ConfigParseError>> for Box<ConfigParseIoError> {
     fn from(value: Box<ConfigParseError>) -> Self {
         Box::new(ConfigParseIoError::Config(*value))
+    }
+}
+impl From<Infallible> for ConfigParseIoError {
+    fn from(value: Infallible) -> Self {
+        match value {}
     }
 }
 
@@ -383,7 +414,13 @@ where
     }
 
     fn parse_ast_group(&mut self, key: bytes::Bytes, group: AstGroup) -> Result<(), Self::Err> {
-        self.parse_ast_entry(&key, AstEntry::Group { key: key.clone(), group })
+        self.parse_ast_entry(
+            &key,
+            AstEntry::Group {
+                key: key.clone(),
+                group,
+            },
+        )
     }
 
     fn parse_ast_entry(&mut self, key: &bytes::Bytes, entry: AstEntry) -> Result<(), Self::Err> {

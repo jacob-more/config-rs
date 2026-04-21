@@ -5,7 +5,6 @@ use std::{
     hash::Hash,
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
     ops::Deref,
-    os::unix::ffi::{OsStrExt, OsStringExt},
     path::{Path, PathBuf},
 };
 
@@ -181,7 +180,7 @@ impl TryFrom<&OsStr> for Cval<&str> {
     fn try_from(value: &OsStr) -> Result<Self, Self::Error> {
         // try_from(&[u8]) validates that the underlying bytes are utf8 encoded.
         // Required for later safety guarantees.
-        Self::try_from(value.as_bytes())
+        Self::try_from(value.as_encoded_bytes())
     }
 }
 
@@ -191,7 +190,7 @@ impl TryFrom<OsString> for Cval<&str> {
     fn try_from(value: OsString) -> Result<Self, Self::Error> {
         // try_from(Vec<u8>) validates that the underlying bytes are utf8
         // encoded. Required for later safety guarantees.
-        Self::try_from(value.into_vec())
+        Self::try_from(value.into_encoded_bytes())
     }
 }
 
@@ -201,7 +200,7 @@ impl TryFrom<Cval<&OsStr>> for Cval<&str> {
     fn try_from(value: Cval<&OsStr>) -> Result<Self, Self::Error> {
         // Validates that the underlying bytes are utf8 encoded. Required for
         // later safety guarantees.
-        str::from_utf8(value.deref().as_bytes())?;
+        str::from_utf8(value.deref().as_encoded_bytes())?;
         Ok(Self(value.into_inner()))
     }
 }
@@ -266,7 +265,23 @@ impl Deref for Cval<&OsStr> {
     type Target = OsStr;
 
     fn deref(&self) -> &Self::Target {
-        OsStr::from_bytes(&self.0)
+        // Safety:
+        //
+        // > As the encoding is unspecified, callers must pass in bytes that
+        // > originated as a mixture of validated UTF-8 and bytes from
+        // > OsStr::as_encoded_bytes from within the same Rust version built for
+        // > the same target platform. For example, reconstructing an OsStr from
+        // > bytes sent over the network or stored in a file will likely violate
+        // > these safety rules.
+        // >
+        // > Due to the encoding being self-synchronizing, the bytes from
+        // > OsStr::as_encoded_bytes can be split either immediately before or
+        // > immediately after any valid non-empty UTF-8 substring.
+        //
+        // Cval does not expose the underlying encoding and all methods that
+        // convert into this function first parse from the system-specific
+        // encoding.
+        unsafe { OsStr::from_encoded_bytes_unchecked(&self.0) }
     }
 }
 
@@ -285,39 +300,43 @@ where
     }
 }
 
-impl TryFrom<&[u8]> for Cval<&OsStr> {
-    type Error = ConfigParseOperationError;
-
-    fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
-        Ok(Self(value.to_vec().into()))
+impl From<&[u8]> for Cval<&OsStr> {
+    fn from(value: &[u8]) -> Self {
+        Self::from(value.to_vec())
     }
 }
 
-impl TryFrom<Vec<u8>> for Cval<&OsStr> {
-    type Error = ConfigParseOperationError;
+#[cfg(unix)]
+impl From<Vec<u8>> for Cval<&OsStr> {
+    fn from(value: Vec<u8>) -> Self {
+        use std::os::unix::ffi::OsStringExt;
 
-    fn try_from(value: Vec<u8>) -> Result<Self, Self::Error> {
-        Self::try_from(Bytes::from(value))
+        // On Unix-like systems, this upholds the safety guarantees for the
+        // underlying encoding
+        Self::from(OsString::from_vec(value))
     }
 }
 
-impl TryFrom<Bytes> for Cval<&OsStr> {
-    type Error = ConfigParseOperationError;
-
-    fn try_from(value: Bytes) -> Result<Self, Self::Error> {
-        Ok(Self(value))
+#[cfg(unix)]
+impl From<Bytes> for Cval<&OsStr> {
+    fn from(value: Bytes) -> Self {
+        // On Unix-like systems, this upholds the safety guarantees for the
+        // underlying encoding
+        Self(value)
     }
 }
 
 impl From<&OsStr> for Cval<&OsStr> {
     fn from(value: &OsStr) -> Self {
-        value.to_os_string().into()
+        Self::from(value.to_os_string())
     }
 }
 
 impl From<OsString> for Cval<&OsStr> {
     fn from(value: OsString) -> Self {
-        Self(value.into_vec().into())
+        // This upholds the safety guarantees for the underlying encoding on all
+        // platforms
+        Self(Bytes::from(value.into_encoded_bytes()))
     }
 }
 
@@ -335,13 +354,15 @@ impl From<String> for Cval<&OsStr> {
 
 impl From<Cval<&str>> for Cval<&OsStr> {
     fn from(value: Cval<&str>) -> Self {
+        // This upholds the safety guarantees for the underlying encoding on all
+        // platforms because OsStr encoding is a superset of UTF-8.
         Self(value.into_inner())
     }
 }
 
 impl From<&Path> for Cval<&OsStr> {
     fn from(value: &Path) -> Self {
-        Self::from(OsStr::new(value))
+        Self::from(value.as_os_str())
     }
 }
 
@@ -351,9 +372,9 @@ impl From<PathBuf> for Cval<&OsStr> {
     }
 }
 
-impl From<Cval<&Path>> for Cval<&OsStr> {
-    fn from(value: Cval<&Path>) -> Self {
-        Self(value.into_inner())
+impl<'a> From<Cval<&'a Path>> for Cval<&'a OsStr> {
+    fn from(value: Cval<&'a Path>) -> Self {
+        Self::from(value.into_inner())
     }
 }
 
@@ -363,15 +384,15 @@ impl Display for Cval<&OsStr> {
     }
 }
 
-impl ICval for &Path {
-    type Repr = Bytes;
+impl<'a> ICval for &'a Path {
+    type Repr = Cval<&'a OsStr>;
 }
 
 impl Deref for Cval<&Path> {
     type Target = Path;
 
     fn deref(&self) -> &Self::Target {
-        Path::new(OsStr::from_bytes(&self.0))
+        Path::new(self.0.deref())
     }
 }
 
@@ -390,44 +411,39 @@ where
     }
 }
 
-impl TryFrom<Bytes> for Cval<&Path> {
-    type Error = ConfigParseOperationError;
-
-    fn try_from(value: Bytes) -> Result<Self, Self::Error> {
-        // Although this always returns Ok right now, implement TryFrom in order
-        // to reserve the ability to enforce a stronger encoding in the future,
-        // more inline with something like OsStr's wtf8 encoding.
-        Ok(Self(value))
+impl From<Bytes> for Cval<&Path> {
+    fn from(value: Bytes) -> Self {
+        Self(Cval::from(value))
     }
 }
 
 impl From<&OsStr> for Cval<&Path> {
     fn from(value: &OsStr) -> Self {
-        Self::from(Path::new(value))
+        Self(Cval::from(value))
     }
 }
 
 impl From<OsString> for Cval<&Path> {
     fn from(value: OsString) -> Self {
-        Self::from(PathBuf::from(value))
+        Self(Cval::from(value))
     }
 }
 
-impl From<Cval<&OsStr>> for Cval<&Path> {
-    fn from(value: Cval<&OsStr>) -> Self {
-        Self(value.into_inner())
+impl<'a> From<Cval<&'a OsStr>> for Cval<&'a Path> {
+    fn from(value: Cval<&'a OsStr>) -> Self {
+        Self(value)
     }
 }
 
 impl From<&Path> for Cval<&Path> {
     fn from(value: &Path) -> Self {
-        value.to_path_buf().into()
+        Self(Cval::from(value))
     }
 }
 
 impl From<PathBuf> for Cval<&Path> {
     fn from(value: PathBuf) -> Self {
-        Self(value.into_os_string().into_vec().into())
+        Self(Cval::from(value))
     }
 }
 
