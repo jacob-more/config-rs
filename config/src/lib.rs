@@ -382,6 +382,10 @@ where
         Self::default()
     }
 
+    fn parse_ast_group(&mut self, key: bytes::Bytes, group: AstGroup) -> Result<(), Self::Err> {
+        self.parse_ast_entry(&key, AstEntry::Group { key: key.clone(), group })
+    }
+
     fn parse_ast_entry(&mut self, key: &bytes::Bytes, entry: AstEntry) -> Result<(), Self::Err> {
         let parent_group = key;
 
