@@ -1,4 +1,5 @@
 use std::{
+    borrow::Borrow,
     ffi::{OsStr, OsString},
     fmt::{Debug, Display},
     ops::Deref,
@@ -43,6 +44,15 @@ where
 {
     fn as_ref(&self) -> &T {
         self.deref().as_ref()
+    }
+}
+
+impl<T> Borrow<T> for Key
+where
+    Self: AsRef<T>,
+{
+    fn borrow(&self) -> &T {
+        self.as_ref()
     }
 }
 
