@@ -261,6 +261,15 @@ impl ICval for &OsStr {
     type Repr = Bytes;
 }
 
+#[cfg(unix)]
+impl Cval<&OsStr> {
+    pub(crate) const fn from_static(bytes: &'static [u8]) -> Self {
+        // On Unix-like systems, this upholds the safety guarantees for the
+        // underlying encoding
+        Self(Bytes::from_static(bytes))
+    }
+}
+
 impl Deref for Cval<&OsStr> {
     type Target = OsStr;
 
@@ -374,7 +383,7 @@ impl From<PathBuf> for Cval<&OsStr> {
 
 impl<'a> From<Cval<&'a Path>> for Cval<&'a OsStr> {
     fn from(value: Cval<&'a Path>) -> Self {
-        Self::from(value.into_inner())
+        value.into_inner()
     }
 }
 

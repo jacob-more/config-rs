@@ -27,7 +27,7 @@ enum WellKnownType {
 impl WellKnownType {
     pub fn parse(field: &Field) -> Option<Self> {
         const WKT_MAP: &[(&str, WellKnownType)] = &[
-            ("Bytes", WellKnownType::Key),
+            ("Key", WellKnownType::Key),
             ("ConfigValue", WellKnownType::ConfigValue),
             ("ConfigSet", WellKnownType::ConfigSet),
             ("ConfigList", WellKnownType::ConfigList),
@@ -89,8 +89,6 @@ impl ConfigKey {
 pub struct ConfigStrKey<'a, 'b>(&'b ConfigField<'a>);
 
 impl<'a, 'b> ConfigStrKey<'a, 'b> {
-    // May be unused, defined for consistent internal API
-    #[allow(unused)]
     pub fn ident(&self) -> Ident {
         format_ident!(
             "KEY_{}_{}",
@@ -131,6 +129,8 @@ impl<'a, 'b> ConfigBytesKey<'a, 'b> {
         LitByteStr::new(self.0.key.literal.as_bytes(), self.0.key.span)
     }
 
+    // May be unused, defined for consistent internal API
+    #[allow(unused)]
     pub fn statement_instantiate(&self) -> Stmt {
         let ident = self.ident();
         let literal = self.literal();
@@ -151,13 +151,18 @@ impl<'a, 'b> OperationDefault<'a, 'b> {
 
     pub fn expr_instantiate(&self) -> Expr {
         let ty = &self.0.field.ty;
-        let literal_key = self.0.key_str().literal();
+        let literal_key = self.0.key_bytes().literal();
         let tokens = match &self.0.attributes.default {
             Some(default_expr) => quote! {
-                <#ty>::new_with_default(#literal_key, #default_expr)
+                <#ty>::new_with_default(
+                    ::config::Key::from_static(#literal_key),
+                    #default_expr
+                )
             },
             None => quote! {
-                <#ty>::new(#literal_key)
+                <#ty>::new(
+                    ::config::Key::from_static(#literal_key)
+                )
             },
         };
         syn::parse2(tokens).expect("must generate valid expressions")

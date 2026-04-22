@@ -1,8 +1,8 @@
-use crate::{ICval, history::History};
+use crate::{ICval, Key, history::History};
 
 #[derive(Debug)]
 pub struct ConfigHeader<T: ICval> {
-    key: &'static str,
+    key: Key,
     history: History<T>,
     is_default: bool,
 }
@@ -11,7 +11,7 @@ impl<T> ConfigHeader<T>
 where
     T: ICval,
 {
-    pub const fn new(key: &'static str) -> Self {
+    pub const fn new(key: Key) -> Self {
         Self {
             key,
             history: History::new(),
@@ -19,8 +19,8 @@ where
         }
     }
 
-    pub const fn key(&self) -> &'static str {
-        self.key
+    pub const fn key(&self) -> &Key {
+        &self.key
     }
 
     pub const fn history(&self) -> &History<T> {
@@ -50,7 +50,7 @@ where
 {
     fn clone(&self) -> Self {
         Self {
-            key: self.key,
+            key: self.key.clone(),
             history: self.history.clone(),
             is_default: self.is_default,
         }

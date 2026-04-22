@@ -133,7 +133,7 @@ impl<'a> ConfigStruct<'a> {
                 None => {
                     let byte_literal = f.key_bytes().literal();
                     quote! {
-                        ::config::derive::Bytes::from(#byte_literal.as_slice())
+                        ::config::Key::from(#byte_literal.as_slice())
                     }
                 }
             },
@@ -143,7 +143,7 @@ impl<'a> ConfigStruct<'a> {
                 let byte_literal = f.key_bytes().literal();
                 quote! {
                     <#ty as ::config::ConfigGroup>::new(
-                        ::config::derive::Bytes::from(#byte_literal.as_slice())
+                        ::config::Key::from(#byte_literal.as_slice())
                     )
                 }
             }
@@ -182,12 +182,6 @@ impl<'a> ConfigStruct<'a> {
 
     fn generate_impl_parse_ast(&self) -> TokenStream {
         let struct_ident = &self.data.ident;
-
-        let key_bytes_instantiate_statement = self
-            .fields
-            .iter()
-            .filter(|f| matches!(f.field_type(), FieldType::Group | FieldType::Config))
-            .map(|f| f.key_bytes().statement_instantiate());
 
         let flat_groups = self
             .fields
@@ -261,8 +255,6 @@ impl<'a> ConfigStruct<'a> {
                     &mut self,
                     entry: ::config::ast::AstEntry
                 ) -> ::std::result::Result<(), Self::Err> {
-                    #(#key_bytes_instantiate_statement)*
-
                     #(
                         let entry = match ::config::Config::parse_ast_entry(&mut self.#flat_ident, entry) {
                             ::std::result::Result::Ok(()) => return ::std::result::Result::Ok(()),
@@ -276,14 +268,22 @@ impl<'a> ConfigStruct<'a> {
                     match entry {
                         ::config::ast::AstEntry::Group { key, group } => match ::std::ops::Deref::deref(&key) {
                             #(#group_key_pattern => if let ::std::result::Result::Err(error) =
-                                ::config::ConfigGroup::parse_ast_group(&mut self.#group_ident, key, group)
+                                ::config::ConfigGroup::parse_ast_group(
+                                    &mut self.#group_ident,
+                                    ::core::convert::From::from(key),
+                                    group
+                                )
                             {
                                 return ::std::result::Result::Err(
                                     ::config::ConfigParseError::Group(error)
                                 );
                             },)*
                             #(_ => if let ::std::result::Result::Err(error) =
-                                ::config::ConfigGroup::parse_ast_group(&mut self.#any_group_ident, key, group)
+                                ::config::ConfigGroup::parse_ast_group(
+                                    &mut self.#any_group_ident,
+                                    ::core::convert::From::from(key),
+                                    group
+                                )
                             {
                                 return ::std::result::Result::Err(
                                     ::config::ConfigParseError::Group(error)
@@ -308,7 +308,11 @@ impl<'a> ConfigStruct<'a> {
                         },
                         ::config::ast::AstEntry::Operation { key, operation } => match ::std::ops::Deref::deref(&key) {
                             #(#config_key_pattern => if let ::std::result::Result::Err(error) =
-                                ::config::ConfigOperationExt::parse_ast_entry(&mut self.#config_ident, key, operation)
+                                ::config::ConfigOperationExt::parse_ast_entry(
+                                    &mut self.#config_ident,
+                                    ::core::convert::From::from(key),
+                                    operation
+                                )
                             {
                                 return ::std::result::Result::Err(
                                     ::config::ConfigParseError::Operation(error)
@@ -354,12 +358,6 @@ impl<'a> ConfigStruct<'a> {
         // The function `new()` takes an argument `key` which we want to use
         // instead of the pre-defined literal.
         let new_body = self.generate_new_body(Some(quote! { key }));
-
-        let key_bytes_instantiate_statement = self
-            .fields
-            .iter()
-            .filter(|f| matches!(f.field_type(), FieldType::Group | FieldType::Config))
-            .map(|f| f.key_bytes().statement_instantiate());
 
         let group_keys = self
             .fields
@@ -440,17 +438,15 @@ impl<'a> ConfigStruct<'a> {
             impl ::config::ConfigGroup for #struct_ident {
                 type Err = ::config::ConfigParseGroupError;
 
-                fn new(key: ::config::derive::Bytes) -> Self {
+                fn new(key: ::config::Key) -> Self {
                     #new_body
                 }
 
                 fn parse_ast_entry(
                     &mut self,
-                    key: &::config::derive::Bytes,
+                    key: &::config::Key,
                     entry: ::config::ast::AstEntry
                 ) -> ::std::result::Result<(), Self::Err> {
-                    #(#key_bytes_instantiate_statement)*
-
                     #(#group_key)*
                     let parent_key = key;
 
@@ -467,21 +463,33 @@ impl<'a> ConfigStruct<'a> {
                     match entry {
                         ::config::ast::AstEntry::Group { key, group } => match ::std::ops::Deref::deref(&key) {
                             #(#group_key_pattern => if let ::std::result::Result::Err(error) =
-                                ::config::ConfigGroup::parse_ast_group(&mut self.#group_ident, key, group)
+                                ::config::ConfigGroup::parse_ast_group(
+                                    &mut self.#group_ident,
+                                    ::core::convert::From::from(key),
+                                    group
+                                )
                             {
                                 return ::std::result::Result::Err(
                                     ::config::ConfigParseGroupError::Group {
-                                        group: ::std::clone::Clone::clone(&parent_key),
+                                        group: ::config::derive::Bytes::from(
+                                            ::std::clone::Clone::clone(parent_key)
+                                        ),
                                         error: ::std::boxed::Box::new(error),
                                     }
                                 );
                             },)*
                             #(_ => if let ::std::result::Result::Err(error) =
-                                ::config::ConfigGroup::parse_ast_group(&mut self.#any_group_ident, key, group)
+                                ::config::ConfigGroup::parse_ast_group(
+                                    &mut self.#any_group_ident,
+                                    ::core::convert::From::from(key),
+                                    group
+                                )
                             {
                                 return ::std::result::Result::Err(
                                     ::config::ConfigParseGroupError::Group {
-                                        group: ::std::clone::Clone::clone(&parent_key),
+                                        group: ::config::derive::Bytes::from(
+                                            ::std::clone::Clone::clone(parent_key)
+                                        ),
                                         error: ::std::boxed::Box::new(error),
                                     }
                                 );
@@ -491,14 +499,18 @@ impl<'a> ConfigStruct<'a> {
                                 if <[&[u8]]>::contains(&#config_key_array, &::std::ops::Deref::deref(&key)) {
                                     return ::std::result::Result::Err(
                                         ::config::ConfigParseGroupError::UnknownGroupKey {
-                                            group: ::std::clone::Clone::clone(&parent_key),
+                                            group: ::config::derive::Bytes::from(
+                                                ::std::clone::Clone::clone(parent_key)
+                                            ),
                                             entry: ::config::ast::AstEntry::Group { key, group },
                                         }
                                     );
                                 } else {
                                     return ::std::result::Result::Err(
                                         ::config::ConfigParseGroupError::UnknownKey {
-                                            group: ::std::clone::Clone::clone(&parent_key),
+                                            group: ::config::derive::Bytes::from(
+                                                ::std::clone::Clone::clone(parent_key)
+                                            ),
                                             entry: ::config::ast::AstEntry::Group { key, group },
                                         }
                                     );
@@ -507,11 +519,17 @@ impl<'a> ConfigStruct<'a> {
                         },
                         ::config::ast::AstEntry::Operation { key, operation } => match ::std::ops::Deref::deref(&key) {
                             #(#config_key_pattern => if let ::std::result::Result::Err(error) =
-                                ::config::ConfigOperationExt::parse_ast_entry(&mut self.#config_ident, key, operation)
+                                ::config::ConfigOperationExt::parse_ast_entry(
+                                    &mut self.#config_ident,
+                                    ::core::convert::From::from(key),
+                                    operation
+                                )
                             {
                                 return ::std::result::Result::Err(
                                     ::config::ConfigParseGroupError::Operation {
-                                        group: ::std::clone::Clone::clone(&parent_key),
+                                        group: ::config::derive::Bytes::from(
+                                            ::std::clone::Clone::clone(parent_key)
+                                        ),
                                         error,
                                     }
                                 );
@@ -521,14 +539,18 @@ impl<'a> ConfigStruct<'a> {
                                 if <[&[u8]]>::contains(&#group_key_array, &::std::ops::Deref::deref(&key)) {
                                     return ::std::result::Result::Err(
                                         ::config::ConfigParseGroupError::UnknownOperationKey {
-                                            group: ::std::clone::Clone::clone(&parent_key),
+                                            group: ::config::derive::Bytes::from(
+                                                ::std::clone::Clone::clone(parent_key)
+                                            ),
                                             entry: ::config::ast::AstEntry::Operation { key, operation },
                                         }
                                     );
                                 } else {
                                     return ::std::result::Result::Err(
                                         ::config::ConfigParseGroupError::UnknownKey {
-                                            group: ::std::clone::Clone::clone(&parent_key),
+                                            group: ::config::derive::Bytes::from(
+                                                ::std::clone::Clone::clone(parent_key)
+                                            ),
                                             entry: ::config::ast::AstEntry::Operation { key, operation },
                                         }
                                     );
@@ -560,11 +582,7 @@ impl<'a> ConfigStruct<'a> {
             .map(|f| {
                 let key_ident = f.ident();
                 quote! {
-                    ::std::ffi::OsStr::display(
-                        ::std::os::unix::ffi::OsStrExt::from_bytes(
-                            ::std::ops::Deref::deref(&self.#key_ident)
-                        )
-                    )
+                    &self.#key_ident
                 }
             });
         let fields = self

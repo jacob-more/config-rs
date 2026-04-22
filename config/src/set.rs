@@ -1,7 +1,7 @@
 use std::{collections::HashSet, fmt::Display, hash::Hash};
 
 use crate::{
-    ConfigFmt, ConfigOperation, Cval, ICval, Operation,
+    ConfigFmt, ConfigOperation, Cval, ICval, Key, Operation,
     ast::{OPERATOR_ADD, OPERATOR_ASSIGN, OPERATOR_CLEAR},
     header::ConfigHeader,
 };
@@ -18,7 +18,7 @@ where
     T: ICval,
     T::Repr: Hash + Eq,
 {
-    pub fn new(key: &'static str) -> Self {
+    pub fn new(key: Key) -> Self {
         Self {
             header: ConfigHeader::new(key),
             set: HashSet::new(),
@@ -26,7 +26,7 @@ where
         }
     }
 
-    pub fn new_with_default<'x, X>(key: &'static str, default: &'x [X]) -> Self
+    pub fn new_with_default<'x, X>(key: Key, default: &'x [X]) -> Self
     where
         Cval<T>: From<&'x X>,
     {
@@ -38,7 +38,7 @@ where
         }
     }
 
-    pub const fn key(&self) -> &'static str {
+    pub const fn key(&self) -> &Key {
         self.header.key()
     }
 

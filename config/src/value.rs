@@ -1,7 +1,8 @@
 use std::fmt::Display;
 
 use crate::{
-    ConfigFmt, ConfigOperation, Cval, ICval, Operation, ast::OPERATOR_ASSIGN, header::ConfigHeader,
+    ConfigFmt, ConfigOperation, Cval, ICval, Key, Operation, ast::OPERATOR_ASSIGN,
+    header::ConfigHeader,
 };
 
 #[derive(Debug)]
@@ -15,7 +16,7 @@ impl<T> ConfigValue<T>
 where
     T: ICval,
 {
-    pub fn new(key: &'static str) -> Self
+    pub fn new(key: Key) -> Self
     where
         T: Default,
         Cval<T>: From<T>,
@@ -27,7 +28,7 @@ where
         }
     }
 
-    pub fn new_with_default<X>(key: &'static str, default: X) -> Self
+    pub fn new_with_default<X>(key: Key, default: X) -> Self
     where
         Cval<T>: From<X>,
     {
@@ -39,7 +40,7 @@ where
         }
     }
 
-    pub const fn key(&self) -> &'static str {
+    pub const fn key(&self) -> &Key {
         self.header.key()
     }
 

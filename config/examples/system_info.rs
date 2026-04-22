@@ -1,5 +1,6 @@
 use config::derive;
 use config::{ConfigExt, ConfigValue};
+use config::{Key, derive};
 
 #[derive(
     Debug, Clone, derive::Config, derive::ConfigGroup, derive::ConfigDefault, derive::ConfigDisplay,
@@ -7,7 +8,7 @@ use config::{ConfigExt, ConfigValue};
 #[exhaustive]
 pub struct Locale {
     #[key("LOCALE")]
-    pub group_key: bytes::Bytes,
+    pub group_key: Key,
     pub lang: ConfigValue<Option<&'static str>>,
     pub lc_address: ConfigValue<Option<&'static str>>,
     pub lc_identification: ConfigValue<Option<&'static str>>,
@@ -25,7 +26,7 @@ pub struct Locale {
 )]
 pub struct OsRelease {
     #[key("OS_RELEASE")]
-    pub group_key: bytes::Bytes,
+    pub group_key: Key,
     pub name: ConfigValue<Option<&'static str>>,
     pub id: ConfigValue<Option<&'static str>>,
     pub id_like: ConfigValue<Option<&'static str>>,
