@@ -47,12 +47,15 @@ where
     }
 }
 
-impl<T> Borrow<T> for Key
-where
-    Self: AsRef<T>,
-{
-    fn borrow(&self) -> &T {
-        self.as_ref()
+impl Borrow<OsStr> for Key {
+    fn borrow(&self) -> &OsStr {
+        self.deref()
+    }
+}
+
+impl Borrow<Path> for Key {
+    fn borrow(&self) -> &Path {
+        Path::new(self.deref())
     }
 }
 
