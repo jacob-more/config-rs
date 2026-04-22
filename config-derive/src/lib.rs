@@ -251,6 +251,7 @@ impl<'a> ConfigStruct<'a> {
             impl ::config::Config for #struct_ident {
                 type Err = ::config::ConfigParseError;
 
+                #[allow(unreachable_code)]
                 fn parse_ast_entry(
                     &mut self,
                     entry: ::config::ast::AstEntry
@@ -442,6 +443,7 @@ impl<'a> ConfigStruct<'a> {
                     #new_body
                 }
 
+                #[allow(unreachable_code)]
                 fn parse_ast_entry(
                     &mut self,
                     key: &::config::Key,
