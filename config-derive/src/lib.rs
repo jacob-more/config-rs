@@ -337,7 +337,7 @@ impl<'a> ConfigStruct<'a> {
                             },
                         },
                     }
-                    Ok(())
+                    ::std::result::Result::Ok(())
                 }
 
                 fn replay(&mut self, other: &Self) {
@@ -560,7 +560,7 @@ impl<'a> ConfigStruct<'a> {
                             },
                         },
                     }
-                    Ok(())
+                    ::std::result::Result::Ok(())
                 }
 
                 fn replay(&mut self, other: &Self) {
