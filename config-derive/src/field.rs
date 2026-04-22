@@ -1,8 +1,9 @@
 use proc_macro2::Span;
 use quote::{format_ident, quote};
 use syn::{
-    AttrStyle, Attribute, Expr, Field, Ident, LitBool, LitByteStr, LitStr, Meta, Stmt, Type,
-    TypePath, Visibility, spanned::Spanned,
+    AttrStyle, Attribute, Expr, Field, GenericArgument, Ident, LitBool, LitByteStr, LitStr, Meta,
+    PathArguments, PathSegment, Stmt, Type, TypePath, Visibility, punctuated::Punctuated,
+    spanned::Spanned, token::PathSep,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -25,7 +26,88 @@ enum WellKnownType {
 }
 
 impl WellKnownType {
-    pub fn parse(field: &Field) -> Option<Self> {
+    fn is_expected_leading_path(&self, segments: &Punctuated<PathSegment, PathSep>) -> bool {
+        // The last segment is skipped since this function only validates the
+        // path that comes before that last segment.
+        let mut rev_segments = segments.iter().rev().skip(1);
+        rev_segments
+            .clone()
+            .all(|segment| segment.arguments.is_empty())
+            && match self {
+                Self::Key
+                | Self::ConfigValue
+                | Self::ConfigSet
+                | Self::ConfigList
+                | Self::ConfigAcl => {
+                    rev_segments
+                        .next()
+                        .is_none_or(|segment| segment.ident == "config")
+                        && rev_segments.next().is_none()
+                }
+                Self::Map => {
+                    rev_segments
+                        .next()
+                        .is_none_or(|segment| segment.ident == "collections")
+                        && rev_segments
+                            .next()
+                            .is_none_or(|segment| segment.ident == "std")
+                        && rev_segments.next().is_none()
+                }
+            }
+    }
+
+    fn is_expected_arguments(&self, arguments: &PathArguments) -> bool {
+        match self {
+            Self::Key => {
+                // Key has no lifetimes or generics, so if any are present, this
+                // is not ::config::Key.
+                arguments.is_none()
+            }
+            Self::ConfigValue | Self::ConfigSet | Self::ConfigList | Self::ConfigAcl => {
+                // The base config types all take 1 generic argument, `<T>`.
+                let PathArguments::AngleBracketed(args) = arguments else {
+                    return false;
+                };
+                if 1 != args.args.len() {
+                    return false;
+                }
+                let first_arg = args.args.first().expect("length is 1");
+                let GenericArgument::Type(_) = first_arg else {
+                    return false;
+                };
+                // The base config types are expected to be of the form
+                // `ConfigType<T>`. If the colon token were present, they would
+                // be of the form `ConfigType::<T>` which I don't believe is
+                // permitted in the context of a struct definition.
+                args.colon2_token.is_none()
+            }
+            Self::Map => {
+                // The base config types all take 1 generic argument, `<T>`.
+                let PathArguments::AngleBracketed(args) = arguments else {
+                    return false;
+                };
+                if 2 != args.args.len() {
+                    return false;
+                }
+                let GenericArgument::Type(first_arg) = &args.args[0] else {
+                    return false;
+                };
+                if !matches!(Self::parse_type(first_arg), Some(Self::Key)) {
+                    return false;
+                }
+                let GenericArgument::Type(_) = &args.args[1] else {
+                    return false;
+                };
+                // The HashMap type is expected to be of the form
+                // `HashMap<Key, T>`. If the colon token were present, then it
+                // would be of the form ``HashMap::<Key, T>` which I don't
+                // believe is permitted in the context of a struct definition.
+                args.colon2_token.is_none()
+            }
+        }
+    }
+
+    fn parse_type(ty: &Type) -> Option<Self> {
         const WKT_MAP: &[(&str, WellKnownType)] = &[
             ("Key", WellKnownType::Key),
             ("ConfigValue", WellKnownType::ConfigValue),
@@ -34,20 +116,25 @@ impl WellKnownType {
             ("ConfigAcl", WellKnownType::ConfigAcl),
             ("HashMap", WellKnownType::Map),
         ];
-        // TODO: to improve accuracy and reduce false-positive rate, checks all
-        //       segments in the path that are present and count the number of
-        //       generic arguments.
-        if let Type::Path(TypePath { qself: None, path }) = &field.ty {
-            return WKT_MAP
-                .iter()
-                .find(|(op, _)| {
-                    path.segments
-                        .last()
-                        .is_some_and(|segment| segment.ident == op)
-                })
-                .map(|(_, wkc)| *wkc);
+        let Type::Path(TypePath { qself: None, path }) = &ty else {
+            return None;
+        };
+        let last_segment = path.segments.last()?;
+        let wkt = WKT_MAP
+            .iter()
+            .find(|(op, _)| last_segment.ident == op)
+            .map(|(_, wkc)| *wkc)?;
+        if wkt.is_expected_leading_path(&path.segments)
+            && wkt.is_expected_arguments(&last_segment.arguments)
+        {
+            Some(wkt)
+        } else {
+            None
         }
-        None
+    }
+
+    pub fn parse(field: &Field) -> Option<Self> {
+        Self::parse_type(&field.ty)
     }
 
     pub fn parser(&self) -> FieldType {
