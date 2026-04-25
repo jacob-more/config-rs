@@ -24,8 +24,32 @@ enum ReprSyntaxError {
         bytes: Bytes,
         span: Span,
     },
+    #[error(
+        "expected {expected} after '{} {}' but found {token}({}) at {span}",
+        OsStr::from_bytes(key.deref()).display(),
+        OsStr::from_bytes(operation.deref()).display(),
+        OsStr::from_bytes(bytes.deref()).display(),
+    )]
+    ExpectedValueAfterBinaryOperation {
+        key: Bytes,
+        operation: Bytes,
+        expected: &'static str,
+        token: &'static str,
+        bytes: Bytes,
+        span: Span,
+    },
     #[error("expected {expected} but found end-of-file")]
     ExpectedButFoundEOF { expected: &'static str },
+    #[error(
+        "expected {expected} after '{} {}' but found end-of-file",
+        OsStr::from_bytes(key.deref()).display(),
+        OsStr::from_bytes(operation.deref()).display(),
+    )]
+    ExpectedValueAfterBinaryOperationButFoundEOF {
+        key: Bytes,
+        operation: Bytes,
+        expected: &'static str,
+    },
     #[error(
         "in group {}, {error}",
         OsStr::from_bytes(group.deref()).display()
@@ -117,7 +141,9 @@ impl<'a> SyntaxTreeEntry<'a> {
                     {
                         Some(Token::GroupingOpen(value)) => value,
                         Some(token) => {
-                            return Err(ReprSyntaxError::Expected {
+                            return Err(ReprSyntaxError::ExpectedValueAfterBinaryOperation {
+                                key: identifier.as_bytes(),
+                                operation: op.as_bytes(),
                                 expected: "group opening '{'",
                                 token: token.ident(),
                                 bytes: token.as_bytes(),
@@ -126,10 +152,14 @@ impl<'a> SyntaxTreeEntry<'a> {
                             .into());
                         }
                         None => {
-                            return Err(ReprSyntaxError::ExpectedButFoundEOF {
-                                expected: "group opening '{'",
-                            }
-                            .into());
+                            return Err(
+                                ReprSyntaxError::ExpectedValueAfterBinaryOperationButFoundEOF {
+                                    key: identifier.as_bytes(),
+                                    operation: op.as_bytes(),
+                                    expected: "group opening '{'",
+                                }
+                                .into(),
+                            );
                         }
                     };
                     let mut entries = Vec::new();
@@ -164,8 +194,10 @@ impl<'a> SyntaxTreeEntry<'a> {
                     {
                         Some(Token::Value(value)) => value,
                         Some(token) => {
-                            return Err(ReprSyntaxError::Expected {
-                                expected: "value string after operator",
+                            return Err(ReprSyntaxError::ExpectedValueAfterBinaryOperation {
+                                key: identifier.as_bytes(),
+                                operation: op.as_bytes(),
+                                expected: "value string",
                                 token: token.ident(),
                                 bytes: token.as_bytes(),
                                 span: token.span(),
@@ -173,10 +205,14 @@ impl<'a> SyntaxTreeEntry<'a> {
                             .into());
                         }
                         None => {
-                            return Err(ReprSyntaxError::ExpectedButFoundEOF {
-                                expected: "value string after operator",
-                            }
-                            .into());
+                            return Err(
+                                ReprSyntaxError::ExpectedValueAfterBinaryOperationButFoundEOF {
+                                    key: identifier.as_bytes(),
+                                    operation: op.as_bytes(),
+                                    expected: "value string",
+                                }
+                                .into(),
+                            );
                         }
                     };
                     Self::BinaryOp {
