@@ -8,9 +8,9 @@ use crate::{
     ast::{
         Ast, AstEntry,
         parser::{
-            AstParser, OPERATOR_BYTES_ADD, OPERATOR_BYTES_ASSIGN,
-            OPERATOR_BYTES_ASSIGN_IF_UNDEFINED, OPERATOR_BYTES_CLEAR, OPERATOR_BYTES_REMOVE,
-            OPERATOR_BYTES_RESET,
+            AstParser, BYTES_OPERATOR_ADD, BYTES_OPERATOR_ASSIGN,
+            BYTES_OPERATOR_ASSIGN_IF_UNDEFINED, BYTES_OPERATOR_CLEAR, BYTES_OPERATOR_REMOVE,
+            BYTES_OPERATOR_RESET,
         },
     },
     ext::IterEscaped,
@@ -146,20 +146,20 @@ struct PropKeyAssignValue {
 impl PropKeyAssignValue {
     pub fn as_ast_entry(&self) -> AstEntry {
         match self.op.val.deref() {
-            OPERATOR_BYTES_ASSIGN => {
+            BYTES_OPERATOR_ASSIGN => {
                 AstEntry::new_assign(self.identifier.as_ast_string(), self.value.as_ast_string())
             }
-            OPERATOR_BYTES_ASSIGN_IF_UNDEFINED => AstEntry::new_assign_if_undefined(
+            BYTES_OPERATOR_ASSIGN_IF_UNDEFINED => AstEntry::new_assign_if_undefined(
                 self.identifier.as_ast_string(),
                 self.value.as_ast_string(),
             ),
-            OPERATOR_BYTES_ADD => {
+            BYTES_OPERATOR_ADD => {
                 AstEntry::new_add(self.identifier.as_ast_string(), self.value.as_ast_string())
             }
-            OPERATOR_BYTES_REMOVE => {
+            BYTES_OPERATOR_REMOVE => {
                 AstEntry::new_remove(self.identifier.as_ast_string(), self.value.as_ast_string())
             }
-            OPERATOR_BYTES_RESET => AstEntry::new_reset(self.identifier.as_ast_string()),
+            BYTES_OPERATOR_RESET => AstEntry::new_reset(self.identifier.as_ast_string()),
             _ => panic!(
                 "operator not supported: {}",
                 OsStr::from_bytes(self.op.val.deref()).display()
@@ -194,8 +194,8 @@ struct PropKeyReset {
 impl PropKeyReset {
     pub fn as_ast_entry(&self) -> AstEntry {
         match self.op.val.deref() {
-            OPERATOR_BYTES_CLEAR => AstEntry::new_clear(self.identifier.as_ast_string()),
-            OPERATOR_BYTES_RESET => AstEntry::new_reset(self.identifier.as_ast_string()),
+            BYTES_OPERATOR_CLEAR => AstEntry::new_clear(self.identifier.as_ast_string()),
+            BYTES_OPERATOR_RESET => AstEntry::new_reset(self.identifier.as_ast_string()),
             _ => panic!(
                 "reset operator not supported: {}",
                 OsStr::from_bytes(self.op.val.deref()).display()

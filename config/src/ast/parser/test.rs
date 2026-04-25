@@ -5,8 +5,8 @@ use rstest::rstest;
 use crate::ast::{
     Ast, AstEntry, AstParser,
     parser::{
-        OPERATOR_BYTES_ADD, OPERATOR_BYTES_ASSIGN, OPERATOR_BYTES_ASSIGN_IF_UNDEFINED,
-        OPERATOR_BYTES_CLEAR, OPERATOR_BYTES_REMOVE, OPERATOR_BYTES_RESET,
+        BYTES_OPERATOR_ADD, BYTES_OPERATOR_ASSIGN, BYTES_OPERATOR_ASSIGN_IF_UNDEFINED,
+        BYTES_OPERATOR_CLEAR, BYTES_OPERATOR_REMOVE, BYTES_OPERATOR_RESET,
     },
 };
 
@@ -54,10 +54,10 @@ fn parse_key_assign_value(
     )]
     pre_op_whitespace: &'static [u8],
     #[values(
-        OPERATOR_BYTES_ASSIGN,
-        OPERATOR_BYTES_ASSIGN_IF_UNDEFINED,
-        OPERATOR_BYTES_ADD,
-        OPERATOR_BYTES_REMOVE
+        BYTES_OPERATOR_ASSIGN,
+        BYTES_OPERATOR_ASSIGN_IF_UNDEFINED,
+        BYTES_OPERATOR_ADD,
+        BYTES_OPERATOR_REMOVE
     )]
     operator: &'static [u8],
     #[values(
@@ -90,10 +90,10 @@ fn parse_key_assign_value(
     use crate::ast::parser::AstParser;
 
     let expected_ast = Ast::from_iter(vec![match operator {
-        OPERATOR_BYTES_ASSIGN => AstEntry::new_assign(ast_key, ast_value),
-        OPERATOR_BYTES_ASSIGN_IF_UNDEFINED => AstEntry::new_assign_if_undefined(ast_key, ast_value),
-        OPERATOR_BYTES_ADD => AstEntry::new_add(ast_key, ast_value),
-        OPERATOR_BYTES_REMOVE => AstEntry::new_remove(ast_key, ast_value),
+        BYTES_OPERATOR_ASSIGN => AstEntry::new_assign(ast_key, ast_value),
+        BYTES_OPERATOR_ASSIGN_IF_UNDEFINED => AstEntry::new_assign_if_undefined(ast_key, ast_value),
+        BYTES_OPERATOR_ADD => AstEntry::new_add(ast_key, ast_value),
+        BYTES_OPERATOR_REMOVE => AstEntry::new_remove(ast_key, ast_value),
         _ => panic!(
             "Unexpected operator: {}",
             OsStr::from_bytes(operator).display()
@@ -137,7 +137,7 @@ fn parse_key_reset_value(
         b"  \t\n".as_slice(),
     )]
     pre_op_whitespace: &'static [u8],
-    #[values(OPERATOR_BYTES_RESET, OPERATOR_BYTES_CLEAR)] operator: &'static [u8],
+    #[values(BYTES_OPERATOR_RESET, BYTES_OPERATOR_CLEAR)] operator: &'static [u8],
     #[values(
         b"".as_slice(),
         b" ".as_slice(),
@@ -154,8 +154,8 @@ fn parse_key_reset_value(
     use crate::ast::parser::AstParser;
 
     let expected_ast = Ast::from_iter(vec![match operator {
-        OPERATOR_BYTES_RESET => AstEntry::new_reset(ast_key),
-        OPERATOR_BYTES_CLEAR => AstEntry::new_clear(ast_key),
+        BYTES_OPERATOR_RESET => AstEntry::new_reset(ast_key),
+        BYTES_OPERATOR_CLEAR => AstEntry::new_clear(ast_key),
         _ => panic!(
             "Unexpected operator: {}",
             OsStr::from_bytes(operator).display()

@@ -138,8 +138,8 @@ macro_rules! patterns {
         paste! {
             $(
                 pub struct [<Token $ident>]<'a> {
-                    buffer: &'a Bytes,
-                    captures: Captures<'a>,
+                    pub(crate) buffer: &'a Bytes,
+                    pub(crate) captures: Captures<'a>,
                 }
                 impl<'a> Debug for [<Token $ident>]<'a> {
                     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -354,15 +354,15 @@ patterns!(
 pub static CONFIG_LEXICAL_TOKENIZER: LazyLock<Tokenizer> = LazyLock::new(|| {
     let mut tokenizer = TokenizerBuilder::new();
     tokenizer.value(concat!(
-        r##""(?<qestring>[^"\\]|\\.)*""##, // qstring + escapes
+        r##""(?<qstring>(?s-u)[^"\\]*)""##, // qstring
         r"|",
-        r##""(?<qstring>[^"\\]*)""##, // qstring
+        r##""(?<qestring>(?s-u)(?:[^"\\]|\\.)*)""##, // qstring + escapes
         r"|",
-        r"(?<estring>(?:[A-Za-z0-9_./]|\\.)(?:(?:[A-Za-z0-9_./\-:]|\\.)*(?:[A-Za-z0-9_./]|\\.))?)", // raw string + escapes
+        r"(?<string>(?u-s)[A-Za-z0-9_./](?:[A-Za-z0-9_./\-:]*[A-Za-z0-9_./])?)", // raw string
         r"|",
-        r"(?<string>[A-Za-z0-9_./](?:[A-Za-z0-9_./\-:]*[A-Za-z0-9_./])?)", // raw string
+        r"(?<estring>(?s-u)(?:[A-Za-z0-9_./]|\\.)(?:(?:[A-Za-z0-9_./\-:]|\\.)*(?:[A-Za-z0-9_./]|\\.))?)", // raw string + escapes
     ));
-    let suffix_unary_ops = [regex::escape(OPERATOR_RESET), regex::escape(OPERATOR_CLEAR)]
+    let suffix_unary_ops = [regex::escape(OPERATOR_CLEAR), regex::escape(OPERATOR_RESET)]
         .join('|')
         .to_string();
     tokenizer.suffix_unary_op(&suffix_unary_ops);

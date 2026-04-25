@@ -6,8 +6,8 @@ use thiserror::Error;
 use crate::{
     ast::OPERATOR_GROUP,
     lex::{
-        CONFIG_LEXICAL_TOKENIZER, Span, Token, TokenBinaryOp, TokenGroupingClose,
-        TokenGroupingOpen, TokenSuffixUnaryOp, TokenTerminator, TokenValue, Tokenizer,
+        CONFIG_LEXICAL_TOKENIZER, Span, Token, TokenBinaryOp, TokenSuffixUnaryOp, TokenValue,
+        Tokenizer,
     },
 };
 
@@ -47,29 +47,23 @@ pub struct SyntaxParser {
 
 #[derive(Debug)]
 pub struct SyntaxTree<'a> {
-    entries: Vec<SyntaxTreeEntry<'a>>,
+    pub(crate) entries: Vec<SyntaxTreeEntry<'a>>,
 }
 
 #[derive(Debug)]
-enum SyntaxTreeEntry<'a> {
+pub(crate) enum SyntaxTreeEntry<'a> {
     Group {
         identifier: TokenValue<'a>,
-        op: TokenBinaryOp<'a>,
-        open: TokenGroupingOpen<'a>,
         entries: Vec<SyntaxTreeEntry<'a>>,
-        close: TokenGroupingClose<'a>,
-        terminator: Option<TokenTerminator<'a>>,
     },
     BinaryOp {
         identifier: TokenValue<'a>,
         op: TokenBinaryOp<'a>,
         value: TokenValue<'a>,
-        terminator: Option<TokenTerminator<'a>>,
     },
     SuffixUnaryOp {
         identifier: TokenValue<'a>,
         op: TokenSuffixUnaryOp<'a>,
-        terminator: Option<TokenTerminator<'a>>,
     },
 }
 
@@ -114,10 +108,10 @@ impl<'a> SyntaxTreeEntry<'a> {
                 .into());
             }
         };
-        let mut entry =
+        let entry =
             match tokens.find(|token| !matches!(token, Token::Whitespace(_) | Token::Comment(_))) {
                 Some(Token::BinaryOp(op)) if op.as_slice() == OPERATOR_GROUP.as_bytes() => {
-                    let group_open = match tokens
+                    let _group_open = match tokens
                         .find(|token| !matches!(token, Token::Whitespace(_) | Token::Comment(_)))
                     {
                         Some(Token::GroupingOpen(value)) => value,
@@ -138,7 +132,7 @@ impl<'a> SyntaxTreeEntry<'a> {
                         }
                     };
                     let mut entries = Vec::new();
-                    let group_close = loop {
+                    let _group_close = loop {
                         match tokens.next_if(|token| {
                             matches!(
                                 token,
@@ -160,11 +154,7 @@ impl<'a> SyntaxTreeEntry<'a> {
                     };
                     Self::Group {
                         identifier,
-                        op,
-                        open: group_open,
                         entries,
-                        close: group_close,
-                        terminator: None,
                     }
                 }
                 Some(Token::BinaryOp(op)) => {
@@ -192,14 +182,9 @@ impl<'a> SyntaxTreeEntry<'a> {
                         identifier,
                         op,
                         value,
-                        terminator: None,
                     }
                 }
-                Some(Token::SuffixUnaryOp(op)) => Self::SuffixUnaryOp {
-                    identifier,
-                    op,
-                    terminator: None,
-                },
+                Some(Token::SuffixUnaryOp(op)) => Self::SuffixUnaryOp { identifier, op },
                 Some(token) => {
                     return Err(ReprSyntaxError::Expected {
                         expected: "operator after key string",
@@ -220,12 +205,7 @@ impl<'a> SyntaxTreeEntry<'a> {
             .next_if(|token| matches!(token, Token::Whitespace(_) | Token::Comment(_)))
             .is_some()
         {}
-        let terminator = match &mut entry {
-            Self::Group { terminator, .. } => terminator,
-            Self::BinaryOp { terminator, .. } => terminator,
-            Self::SuffixUnaryOp { terminator, .. } => terminator,
-        };
-        *terminator = tokens.next_if_map(|token| match token {
+        let _terminator = tokens.next_if_map(|token| match token {
             Token::Terminator(terminator) => Ok(terminator),
             _ => Err(token),
         });
@@ -237,8 +217,14 @@ impl SyntaxParser {
     pub fn parse<'a>(&self, bytes: &'a Bytes) -> Result<SyntaxTree<'a>, SyntaxError> {
         let mut tokens = self.tokenizer.tokenize(bytes).peekable();
         let mut entries = Vec::new();
-        while tokens.peek().is_some() {
-            entries.push(SyntaxTreeEntry::parse(&mut tokens)?);
+        loop {
+            match tokens.peek() {
+                Some(Token::Whitespace(_) | Token::Comment(_) | Token::Terminator(_)) => {
+                    tokens.next();
+                }
+                Some(_) => entries.push(SyntaxTreeEntry::parse(&mut tokens)?),
+                None => break,
+            }
         }
         Ok(SyntaxTree { entries })
     }
