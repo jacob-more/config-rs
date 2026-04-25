@@ -11,6 +11,7 @@ use thiserror::Error;
 
 pub mod ast;
 pub mod ext;
+pub mod lex;
 
 mod cval;
 mod fmt;
