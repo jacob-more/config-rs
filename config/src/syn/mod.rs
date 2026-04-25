@@ -1,6 +1,7 @@
 use std::{convert::Infallible, ffi::OsStr, iter::Peekable, ops::Deref, os::unix::ffi::OsStrExt};
 
 use bytes::Bytes;
+use display_as_debug_derive::DisplayAsDebug;
 use thiserror::Error;
 
 use crate::{
@@ -11,10 +12,10 @@ use crate::{
     },
 };
 
-#[derive(Debug, Error)]
+#[derive(DisplayAsDebug, Error)]
 enum ReprSyntaxError {
     #[error(
-        "unexpected {expected} but found {token}({}) at {span}",
+        "expected {expected} but found {token}({}) at {span}",
         OsStr::from_bytes(bytes.deref()).display()
     )]
     Expected {
@@ -23,7 +24,7 @@ enum ReprSyntaxError {
         bytes: Bytes,
         span: Span,
     },
-    #[error("unexpected {expected} but found end-of-file")]
+    #[error("expected {expected} but found end-of-file")]
     ExpectedButFoundEOF { expected: &'static str },
     #[error(
         "in group {}, {error}",
@@ -36,7 +37,7 @@ impl From<Infallible> for ReprSyntaxError {
         match value {}
     }
 }
-#[derive(Debug, Error)]
+#[derive(DisplayAsDebug, Error)]
 #[error(transparent)]
 pub struct SyntaxError(#[from] ReprSyntaxError);
 

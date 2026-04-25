@@ -1,6 +1,7 @@
 use std::{convert::Infallible, hint::cold_path};
 
 use bytes::Bytes;
+use display_as_debug_derive::DisplayAsDebug;
 use thiserror::Error;
 
 use crate::{
@@ -35,7 +36,7 @@ pub struct AstParse {
     buffer: Bytes,
 }
 
-#[derive(Debug, Error)]
+#[derive(DisplayAsDebug, Error)]
 pub enum AstParseError {
     #[error(transparent)]
     SyntaxError(SyntaxError),
@@ -124,7 +125,7 @@ impl AstParse {
                             .map(parse_entry)
                             .collect::<Result<Vec<AstEntry>, Box<AstParseError>>>()?,
                     )
-                },
+                }
                 SyntaxTreeEntry::BinaryOp {
                     identifier,
                     op,
@@ -134,7 +135,9 @@ impl AstParse {
                     let value = capture_string(value);
                     match op.as_slice() {
                         BYTES_OPERATOR_ASSIGN => AstEntry::new_assign(identifier, value),
-                        BYTES_OPERATOR_ASSIGN_IF_UNDEFINED => AstEntry::new_assign_if_undefined(identifier, value),
+                        BYTES_OPERATOR_ASSIGN_IF_UNDEFINED => {
+                            AstEntry::new_assign_if_undefined(identifier, value)
+                        }
                         BYTES_OPERATOR_ADD => AstEntry::new_add(identifier, value),
                         BYTES_OPERATOR_REMOVE => AstEntry::new_remove(identifier, value),
                         _ => {
@@ -153,7 +156,7 @@ impl AstParse {
                             panic!("unary operator must match known variant");
                         }
                     }
-                },
+                }
             })
         }
 

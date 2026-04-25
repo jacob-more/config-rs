@@ -1,6 +1,7 @@
 use std::{convert::Infallible, ffi::OsStr, fmt::Display, os::unix::ffi::OsStrExt};
 
 use bytes::Bytes;
+use display_as_debug_derive::DisplayAsDebug;
 use thiserror::Error;
 
 use crate::{ast::parser::AstParser, ext::IterJoin};
@@ -15,7 +16,7 @@ pub const OPERATOR_REMOVE: &str = "-=";
 pub const OPERATOR_RESET: &str = "!";
 pub const OPERATOR_CLEAR: &str = "!!";
 
-#[derive(Debug, Error)]
+#[derive(DisplayAsDebug, Error)]
 #[error(transparent)]
 pub struct AstParseError(#[from] Box<parser::AstParseError>);
 impl From<Infallible> for AstParseError {
