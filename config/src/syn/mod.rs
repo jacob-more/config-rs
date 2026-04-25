@@ -63,7 +63,12 @@ impl From<Infallible> for ReprSyntaxError {
 }
 #[derive(DisplayAsDebug, Error)]
 #[error(transparent)]
-pub struct SyntaxError(#[from] ReprSyntaxError);
+pub struct SyntaxError(#[from] Box<ReprSyntaxError>);
+impl From<ReprSyntaxError> for SyntaxError {
+    fn from(value: ReprSyntaxError) -> Self {
+        SyntaxError(Box::new(value))
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct SyntaxParser {
@@ -178,7 +183,7 @@ impl<'a> SyntaxTreeEntry<'a> {
                             None => entries.push(Self::parse(tokens).map_err(|error| {
                                 ReprSyntaxError::InGroup {
                                     group: identifier.as_bytes(),
-                                    error: Box::new(error.0),
+                                    error: error.0,
                                 }
                             })?),
                         }
