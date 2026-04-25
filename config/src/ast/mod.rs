@@ -7,6 +7,7 @@ use crate::{ast::parser::AstParser, ext::IterJoin};
 
 mod parser;
 
+pub const OPERATOR_GROUP: &str = ":";
 pub const OPERATOR_ASSIGN: &str = "=";
 pub const OPERATOR_ASSIGN_IF_UNDEFINED: &str = ":=";
 pub const OPERATOR_ADD: &str = "+=";

@@ -68,83 +68,148 @@ fn get_pos(bytes: &[u8]) -> Pos {
 }
 
 macro_rules! patterns {
+    (@inner $($ident:ident),+ $(,)?) => {
+        paste! {
+            pub enum Token<'a> {
+                $( $ident([<Token $ident>]<'a>), )+
+            }
+            impl<'a> Debug for Token<'a> {
+                fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                    match self {
+                        $(
+                            Self::$ident(token) => {
+                                f.debug_struct(stringify!($ident))
+                                    .field("buffer", &token.as_bytes())
+                                    .field("span", &self.span())
+                                    .finish()
+                            },
+                        )+
+                    }
+                }
+            }
+            impl<'a> Token<'a> {
+                pub fn as_slice(&self) -> &[u8] {
+                    match self {
+                        $( Self::$ident(token) => token.as_slice(), )+
+                    }
+                }
+
+                pub fn as_bytes(&self) -> Bytes {
+                    match self {
+                        $( Self::$ident(token) => token.as_bytes(), )+
+                    }
+                }
+
+                pub fn span(&self) -> Span {
+                    match self {
+                        $( Self::$ident(token) => token.span(), )+
+                    }
+                }
+
+                pub fn start(&self) -> Pos {
+                    match self {
+                        $( Self::$ident(token) => token.start(), )+
+                    }
+                }
+
+                pub fn end(&self) -> Pos {
+                    match self {
+                        $( Self::$ident(token) => token.end(), )+
+                    }
+                }
+            }
+        }
+    };
     ($(($ident:ident, $capture:expr)),+ $(,)?) => {
-        pub enum Token<'a> {
-            $( $ident(&'a Bytes, Captures<'a>), )+
-            Unknown {
+        patterns!(@inner $($ident,)+ Unknown);
+
+        paste! {
+            $(
+                pub struct [<Token $ident>]<'a> {
+                    buffer: &'a Bytes,
+                    captures: Captures<'a>,
+                }
+                impl<'a> Debug for [<Token $ident>]<'a> {
+                    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                        f.debug_struct(stringify!([<Token $ident>]))
+                            .field("buffer", &self.as_bytes())
+                            .field("span", &self.span())
+                            .finish()
+                    }
+                }
+                impl<'a> [<Token $ident>]<'a> {
+                    pub fn as_slice(&self) -> &[u8] {
+                        let matched = self.captures.get_match();
+                        &self.buffer[matched.start()..matched.end()]
+                    }
+
+                    pub fn as_bytes(&self) -> Bytes {
+                        let matched = self.captures.get_match();
+                        self.buffer.slice(matched.start()..matched.end())
+                    }
+
+                    pub fn span(&self) -> Span {
+                        let matched = self.captures.get_match();
+                        let start = get_pos(&self.buffer[..matched.start()]);
+                        let mut end = get_pos(&self.buffer[matched.start()..matched.end()]);
+                        end.line += start.line;
+                        if (start.line == end.line) {
+                            end.column += start.column;
+                        }
+                        Span { start, end }
+                    }
+
+                    pub fn start(&self) -> Pos {
+                        get_pos(&self.buffer[..self.captures.get_match().start()])
+                    }
+
+                    pub fn end(&self) -> Pos {
+                        get_pos(&self.buffer[..self.captures.get_match().end()])
+                    }
+                }
+            )+
+
+            pub struct TokenUnknown<'a> {
                 buffer: &'a Bytes,
                 start: usize,
                 end: usize,
-            },
-        }
-
-        impl<'a> Debug for Token<'a> {
-            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                match self {
-                    $(
-                        Self::$ident(buffer, captures) => {
-                            f.debug_struct(stringify!($ident))
-                                .field("buffer", &buffer.slice(captures.get_match().range()))
-                                .field("span", &self.span())
-                                .finish()
-                        },
-                    )+
-                    Self::Unknown { buffer, start, end } => {
-                        f.debug_struct("Unknown")
-                                .field("buffer", &buffer.slice(start..end))
-                                .field("span", &self.span())
-                                .finish()
-                    },
+            }
+            impl<'a> Debug for TokenUnknown<'a> {
+                fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                    f.debug_struct("TokenUnknown")
+                        .field("buffer", &self.as_bytes())
+                        .field("span", &self.span())
+                        .finish()
                 }
             }
-        }
-
-        impl<'a> Token<'a> {
-            pub fn span(&self) -> Span {
-                let (start, mut end) = match self {
-                    $(
-                        Self::$ident(buffer, captures) => {
-                            let matched = captures.get_match();
-                            (
-                                get_pos(&buffer[..matched.start()]),
-                                get_pos(&buffer[matched.start()..matched.end()])
-                            )
-                        },
-                    )+
-                    Self::Unknown { buffer, start, end } => {
-                        (
-                            get_pos(&buffer[..*start]),
-                            get_pos(&buffer[*start..*end])
-                        )
-                    },
-                };
-                end.line += start.line;
-                if (start.line == end.line) {
-                    end.column += start.column;
+            impl<'a> TokenUnknown<'a> {
+                pub fn as_slice(&self) -> &[u8] {
+                    &self.buffer[self.start..self.end]
                 }
-                Span { start, end }
-            }
 
-            pub fn start(&self) -> Pos {
-                match self {
-                    $(
-                        Self::$ident(buffer, captures) => get_pos(&buffer[..captures.get_match().start()]),
-                    )+
-                    Self::Unknown { buffer, start, end: _ } => get_pos(&buffer[..*start]),
+                pub fn as_bytes(&self) -> Bytes {
+                    self.buffer.slice(self.start..self.end)
+                }
+
+                pub fn span(&self) -> Span {
+                    let start = get_pos(&self.buffer[..self.start]);
+                    let mut end = get_pos(&self.buffer[self.start..self.end]);
+                    end.line += start.line;
+                    if (start.line == end.line) {
+                        end.column += start.column;
+                    }
+                    Span { start, end }
+                }
+
+                pub fn start(&self) -> Pos {
+                    get_pos(&self.buffer[..self.start])
+                }
+
+                pub fn end(&self) -> Pos {
+                    get_pos(&self.buffer[..self.end])
                 }
             }
 
-            pub fn end(&self) -> Pos {
-                match self {
-                    $(
-                        Self::$ident(buffer, captures) => get_pos(&buffer[..captures.get_match().end()]),
-                    )+
-                    Self::Unknown { buffer, start: _, end } => get_pos(&buffer[..*end]),
-                }
-            }
-        }
-
-        paste! {
             $( const [<CAPTURE_NAME_ $ident:snake:upper>]: &'static str = $capture; )+
 
             #[derive(Debug, Clone)]
@@ -231,25 +296,28 @@ macro_rules! patterns {
                 type Item = Token<'h>;
 
                 fn next(&mut self) -> Option<Self::Item> {
-                    let capture = self.captures.peek()?;
-                    if self.last_end < capture.get_match().start() {
-                        let result = Some(Token::Unknown {
+                    let captures = self.captures.peek()?;
+                    if self.last_end < captures.get_match().start() {
+                        let result = Some(Token::Unknown(TokenUnknown {
                             buffer: self.buffer,
                             start: self.last_end,
-                            end: capture.get_match().start(),
-                        });
-                        self.last_end = capture.get_match().start();
+                            end: captures.get_match().start(),
+                        }));
+                        self.last_end = captures.get_match().start();
                         return result;
                     }
-                    let capture = self.captures
+                    let captures = self.captures
                         .next()
                         .expect("peek operation succeeded. At least one value remained");
-                    self.last_end = capture.get_match().end();
+                    self.last_end = captures.get_match().end();
                     $(
                         if self.tokenizer.[<$ident:snake:lower>]
-                            && capture.name([<CAPTURE_NAME_ $ident:snake:upper>]).is_some()
+                            && captures.name([<CAPTURE_NAME_ $ident:snake:upper>]).is_some()
                         {
-                            return Some(Token::$ident(self.buffer, capture))
+                            return Some(Token::$ident([<Token $ident>] {
+                                buffer: self.buffer,
+                                captures,
+                            }))
                         }
                     )+
                     // TODO: verify if this is helpful
