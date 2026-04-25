@@ -88,6 +88,12 @@ macro_rules! patterns {
                 }
             }
             impl<'a> Token<'a> {
+                pub(crate) fn ident(&self) -> &'static str {
+                    match self {
+                        $( Self::$ident(_) => stringify!($ident), )+
+                    }
+                }
+
                 pub fn as_slice(&self) -> &[u8] {
                     match self {
                         $( Self::$ident(token) => token.as_slice(), )+
@@ -329,12 +335,8 @@ macro_rules! patterns {
     };
 }
 patterns!(
-    (Keyword, "kwrd"),
-    (Identifier, "ident"),
-    (PrefixUnaryOp, "preuop"),
     (SuffixUnaryOp, "sufuop"),
     (BinaryOp, "binop"),
-    (Separator, "sep"),
     (GroupingOpen, "grpopn"),
     (GroupingClose, "grpcls"),
     (Terminator, "term"),

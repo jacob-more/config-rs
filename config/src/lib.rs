@@ -12,6 +12,7 @@ use thiserror::Error;
 pub mod ast;
 pub mod ext;
 pub mod lex;
+pub mod syn;
 
 mod cval;
 mod fmt;
