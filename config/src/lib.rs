@@ -496,7 +496,10 @@ mod test {
 
     #[rstest]
     #[case("cargo.lock.conf")]
+    #[case("comments.conf")]
+    #[case("empty.conf")]
     #[case("root_hints.conf")]
+    #[case("short_cargo.lock.conf")]
     fn test_parse_to_ast(#[case] file_name: &str) {
         use std::fs::read_to_string;
 

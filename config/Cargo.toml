@@ -11,15 +11,7 @@ name = "display_join"
 harness = false
 
 [[bench]]
-name = "parse_to_lex"
-harness = false
-
-[[bench]]
-name = "parse_to_syn"
-harness = false
-
-[[bench]]
-name = "parse_to_ast"
+name = "parse"
 harness = false
 
 [dependencies]
@@ -37,3 +29,4 @@ proptest = "1.11"
 proptest-derive = "0.8"
 rand = "0.10"
 rstest = "0.26"
+walkdir = "2.5"
