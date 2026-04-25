@@ -13,7 +13,9 @@ static EXAMPLES_DIRECTORY: LazyLock<PathBuf> = LazyLock::new(|| {
 const EXAMPLE_CONFIG_FILES: &[&str] = &["cargo.lock.conf", "root_hints.conf"];
 
 fn parse_to_lex(tokenizer: &Tokenizer, read_bytes: Bytes) {
-    let _ = black_box(tokenizer.tokenize(&read_bytes).collect::<Vec<_>>());
+    tokenizer
+        .tokenize(&read_bytes)
+        .for_each(|token| drop(black_box(token)));
 }
 
 fn bench_parse_to_lex(c: &mut Criterion) {
