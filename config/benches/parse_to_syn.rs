@@ -7,6 +7,7 @@ use std::{
 };
 
 use bytes::Bytes;
+use config::syn::SyntaxParser;
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 
 static EXAMPLES_DIRECTORY: LazyLock<PathBuf> = LazyLock::new(|| {
@@ -17,14 +18,14 @@ static EXAMPLES_DIRECTORY: LazyLock<PathBuf> = LazyLock::new(|| {
 });
 const EXAMPLE_CONFIG_FILES: &[&str] = &["cargo.lock.conf", "root_hints.conf"];
 
-fn parse_to_ast(read_bytes: Bytes) {
-    let Ok(_) = black_box(config::ast::Ast::from_bytes(read_bytes)) else {
+fn parse_to_syn(parser: &SyntaxParser, read_bytes: Bytes) {
+    let Ok(_) = black_box(parser.parse(&read_bytes)) else {
         cold_path();
-        panic!("error when parsing the bytes into a tree");
+        panic!("error when parsing the bytes syntax");
     };
 }
 
-fn bench_parse_to_ast(c: &mut Criterion) {
+fn bench_parse_to_syn(c: &mut Criterion) {
     let mut config_path = EXAMPLES_DIRECTORY.clone();
     config_path.push("config_name");
 
@@ -35,12 +36,13 @@ fn bench_parse_to_ast(c: &mut Criterion) {
             .read_to_end(&mut file_data)
             .unwrap();
         let file_data = Bytes::from(file_data);
+        let parser = SyntaxParser::new();
         c.bench_with_input(
-            BenchmarkId::new("ParseToAst", file_name),
+            BenchmarkId::new("ParseToSyn", file_name),
             file_name,
-            |b, _file_name| b.iter(|| parse_to_ast(black_box(file_data.clone()))),
+            |b, _file_name| b.iter(|| parse_to_syn(&parser, black_box(file_data.clone()))),
         );
     }
 }
-criterion_group!(benches, bench_parse_to_ast);
+criterion_group!(benches, bench_parse_to_syn);
 criterion_main!(benches);

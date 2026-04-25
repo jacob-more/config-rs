@@ -1,12 +1,7 @@
-use std::{
-    fs::File,
-    hint::{black_box, cold_path},
-    io::Read,
-    path::PathBuf,
-    sync::LazyLock,
-};
+use std::{fs::File, hint::black_box, io::Read, path::PathBuf, sync::LazyLock};
 
 use bytes::Bytes;
+use config::lex::{CONFIG_LEXICAL_TOKENIZER, Tokenizer};
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 
 static EXAMPLES_DIRECTORY: LazyLock<PathBuf> = LazyLock::new(|| {
@@ -17,14 +12,11 @@ static EXAMPLES_DIRECTORY: LazyLock<PathBuf> = LazyLock::new(|| {
 });
 const EXAMPLE_CONFIG_FILES: &[&str] = &["cargo.lock.conf", "root_hints.conf"];
 
-fn parse_to_ast(read_bytes: Bytes) {
-    let Ok(_) = black_box(config::ast::Ast::from_bytes(read_bytes)) else {
-        cold_path();
-        panic!("error when parsing the bytes into a tree");
-    };
+fn parse_to_lex(tokenizer: &Tokenizer, read_bytes: Bytes) {
+    let _ = black_box(tokenizer.tokenize(&read_bytes).collect::<Vec<_>>());
 }
 
-fn bench_parse_to_ast(c: &mut Criterion) {
+fn bench_parse_to_lex(c: &mut Criterion) {
     let mut config_path = EXAMPLES_DIRECTORY.clone();
     config_path.push("config_name");
 
@@ -35,12 +27,13 @@ fn bench_parse_to_ast(c: &mut Criterion) {
             .read_to_end(&mut file_data)
             .unwrap();
         let file_data = Bytes::from(file_data);
+        let tokenizer = CONFIG_LEXICAL_TOKENIZER.clone();
         c.bench_with_input(
-            BenchmarkId::new("ParseToAst", file_name),
+            BenchmarkId::new("ParseToLex", file_name),
             file_name,
-            |b, _file_name| b.iter(|| parse_to_ast(black_box(file_data.clone()))),
+            |b, _file_name| b.iter(|| parse_to_lex(&tokenizer, black_box(file_data.clone()))),
         );
     }
 }
-criterion_group!(benches, bench_parse_to_ast);
+criterion_group!(benches, bench_parse_to_lex);
 criterion_main!(benches);

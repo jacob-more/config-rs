@@ -1,20 +1,13 @@
-use std::{
-    convert::Infallible, ffi::OsStr, iter::Peekable, ops::Deref, os::unix::ffi::OsStrExt,
-    sync::LazyLock,
-};
+use std::{convert::Infallible, ffi::OsStr, iter::Peekable, ops::Deref, os::unix::ffi::OsStrExt};
 
 use bytes::Bytes;
 use thiserror::Error;
 
 use crate::{
-    ast::{
-        OPERATOR_ADD, OPERATOR_ASSIGN, OPERATOR_ASSIGN_IF_UNDEFINED, OPERATOR_CLEAR,
-        OPERATOR_GROUP, OPERATOR_REMOVE, OPERATOR_RESET,
-    },
-    ext::IterJoin,
+    ast::OPERATOR_GROUP,
     lex::{
-        Span, Token, TokenBinaryOp, TokenGroupingClose, TokenGroupingOpen, TokenSuffixUnaryOp,
-        TokenTerminator, TokenValue, Tokenizer, TokenizerBuilder,
+        CONFIG_LEXICAL_TOKENIZER, Span, Token, TokenBinaryOp, TokenGroupingClose,
+        TokenGroupingOpen, TokenSuffixUnaryOp, TokenTerminator, TokenValue, Tokenizer,
     },
 };
 
@@ -88,41 +81,8 @@ impl Default for SyntaxParser {
 
 impl SyntaxParser {
     pub fn new() -> Self {
-        static LEXICAL_TOKENIZER: LazyLock<Tokenizer> = LazyLock::new(|| {
-            let mut tokenizer = TokenizerBuilder::new();
-            tokenizer.value(concat!(
-                r##""(?<qestring>[^"\\]|\\.)*""##, // qstring + escapes
-                r"|",
-                r##""(?<qstring>[^"\\]*)""##, // qstring
-                r"|",
-                r"(?<estring>(?:[A-Za-z0-9_./]|\\.)(?:(?:[A-Za-z0-9_./\-:]|\\.)*(?:[A-Za-z0-9_./]|\\.))?)", // raw string + escapes
-                r"|",
-                r"(?<string>[A-Za-z0-9_./](?:[A-Za-z0-9_./\-:]*[A-Za-z0-9_./])?)", // raw string
-            ));
-            let suffix_unary_ops = [regex::escape(OPERATOR_RESET), regex::escape(OPERATOR_CLEAR)]
-                .join('|')
-                .to_string();
-            tokenizer.suffix_unary_op(&suffix_unary_ops);
-            let binary_ops = [
-                regex::escape(OPERATOR_ASSIGN),
-                regex::escape(OPERATOR_ASSIGN_IF_UNDEFINED),
-                regex::escape(OPERATOR_ADD),
-                regex::escape(OPERATOR_REMOVE),
-                regex::escape(OPERATOR_GROUP),
-            ]
-            .join('|')
-            .to_string();
-            tokenizer.binary_op(&binary_ops);
-            tokenizer.grouping_open(r"\{");
-            tokenizer.grouping_close(r"\}");
-            tokenizer.terminator(r";");
-            tokenizer.comment(r"(?-su:#.*)");
-            tokenizer.whitespace(r"(?-u:\s|\r|\n)+");
-            tokenizer.finalize().unwrap()
-        });
-
         Self {
-            tokenizer: LEXICAL_TOKENIZER.clone(),
+            tokenizer: CONFIG_LEXICAL_TOKENIZER.clone(),
         }
     }
 }

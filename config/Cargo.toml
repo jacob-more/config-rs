@@ -11,6 +11,14 @@ name = "display_join"
 harness = false
 
 [[bench]]
+name = "parse_to_lex"
+harness = false
+
+[[bench]]
+name = "parse_to_syn"
+harness = false
+
+[[bench]]
 name = "parse_to_ast"
 harness = false
 
