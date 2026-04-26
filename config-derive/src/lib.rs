@@ -20,7 +20,7 @@ pub fn config(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 fn derive_config(ast: DeriveInput) -> proc_macro2::TokenStream {
     // TODO: generics
     match ConfigStruct::parse(&ast) {
-        Ok(config) => config.generate_impl_parse_ast(),
+        Ok(config) => config.generate_impl_parse(),
         Err(error) => error.to_compile_error(),
     }
 }
@@ -37,7 +37,7 @@ pub fn config_group(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 fn derive_config_group(ast: DeriveInput) -> proc_macro2::TokenStream {
     // TODO: generics
     match ConfigStruct::parse(&ast) {
-        Ok(config) => config.generate_impl_parse_ast_group(),
+        Ok(config) => config.generate_impl_parse_group(),
         Err(error) => error.to_compile_error(),
     }
 }
@@ -180,7 +180,7 @@ impl<'a> ConfigStruct<'a> {
         }
     }
 
-    fn generate_impl_parse_ast(&self) -> TokenStream {
+    fn generate_impl_parse(&self) -> TokenStream {
         let struct_ident = &self.data.ident;
 
         let flat_groups = self
@@ -252,12 +252,12 @@ impl<'a> ConfigStruct<'a> {
                 type Err = ::config::ConfigParseError;
 
                 #[allow(unreachable_code)]
-                fn parse_ast_entry(
+                fn parse_entry(
                     &mut self,
-                    entry: ::config::ast::AstEntry
+                    entry: ::config::parse::RawEntry
                 ) -> ::std::result::Result<(), Self::Err> {
                     #(
-                        let entry = match ::config::Config::parse_ast_entry(&mut self.#flat_ident, entry) {
+                        let entry = match ::config::Config::parse_entry(&mut self.#flat_ident, entry) {
                             ::std::result::Result::Ok(()) => return ::std::result::Result::Ok(()),
                             ::std::result::Result::Err(::config::ConfigParseError::UnknownKey(rejected_entry)) => rejected_entry,
                             ::std::result::Result::Err(::config::ConfigParseError::UnknownGroupKey(rejected_entry)) => rejected_entry,
@@ -267,12 +267,12 @@ impl<'a> ConfigStruct<'a> {
                     )*
 
                     match entry {
-                        ::config::ast::AstEntry::Group { key, group } => match ::std::ops::Deref::deref(&key) {
+                        ::config::parse::RawEntry::Group { key, body } => match ::std::ops::Deref::deref(&key) {
                             #(#group_key_pattern => if let ::std::result::Result::Err(error) =
-                                ::config::ConfigGroup::parse_ast_group(
+                                ::config::ConfigGroup::parse_group(
                                     &mut self.#group_ident,
                                     ::core::convert::From::from(key),
-                                    group
+                                    body
                                 )
                             {
                                 return ::std::result::Result::Err(
@@ -280,10 +280,10 @@ impl<'a> ConfigStruct<'a> {
                                 );
                             },)*
                             #(_ => if let ::std::result::Result::Err(error) =
-                                ::config::ConfigGroup::parse_ast_group(
+                                ::config::ConfigGroup::parse_group(
                                     &mut self.#any_group_ident,
                                     ::core::convert::From::from(key),
-                                    group
+                                    body
                                 )
                             {
                                 return ::std::result::Result::Err(
@@ -295,24 +295,24 @@ impl<'a> ConfigStruct<'a> {
                                 if <[&[u8]]>::contains(&#config_key_array, &::std::ops::Deref::deref(&key)) {
                                     return ::std::result::Result::Err(
                                         ::config::ConfigParseError::UnknownGroupKey(
-                                            ::config::ast::AstEntry::Group { key, group }
+                                            ::config::parse::RawEntry::Group { key, body }
                                         )
                                     );
                                 } else {
                                     return ::std::result::Result::Err(
                                         ::config::ConfigParseError::UnknownKey(
-                                            ::config::ast::AstEntry::Group { key, group }
+                                            ::config::parse::RawEntry::Group { key, body }
                                         )
                                     );
                                 }
                             },
                         },
-                        ::config::ast::AstEntry::Operation { key, operation } => match ::std::ops::Deref::deref(&key) {
+                        ::config::parse::RawEntry::Operation { key, body } => match ::std::ops::Deref::deref(&key) {
                             #(#config_key_pattern => if let ::std::result::Result::Err(error) =
-                                ::config::ConfigOperationExt::parse_ast_entry(
+                                ::config::ConfigOperationExt::parse_entry(
                                     &mut self.#config_ident,
                                     ::core::convert::From::from(key),
-                                    operation
+                                    body
                                 )
                             {
                                 return ::std::result::Result::Err(
@@ -324,13 +324,13 @@ impl<'a> ConfigStruct<'a> {
                                 if <[&[u8]]>::contains(&#group_key_array, &::std::ops::Deref::deref(&key)) {
                                     return ::std::result::Result::Err(
                                         ::config::ConfigParseError::UnknownOperationKey(
-                                            ::config::ast::AstEntry::Operation { key, operation }
+                                            ::config::parse::RawEntry::Operation { key, body }
                                         )
                                     );
                                 } else {
                                     return ::std::result::Result::Err(
                                         ::config::ConfigParseError::UnknownKey(
-                                            ::config::ast::AstEntry::Operation { key, operation }
+                                            ::config::parse::RawEntry::Operation { key, body }
                                         )
                                     );
                                 }
@@ -353,7 +353,7 @@ impl<'a> ConfigStruct<'a> {
         }
     }
 
-    fn generate_impl_parse_ast_group(&self) -> TokenStream {
+    fn generate_impl_parse_group(&self) -> TokenStream {
         let struct_ident = &self.data.ident;
 
         // The function `new()` takes an argument `key` which we want to use
@@ -444,16 +444,16 @@ impl<'a> ConfigStruct<'a> {
                 }
 
                 #[allow(unreachable_code)]
-                fn parse_ast_entry(
+                fn parse_entry(
                     &mut self,
                     key: &::config::Key,
-                    entry: ::config::ast::AstEntry
+                    entry: ::config::parse::RawEntry
                 ) -> ::std::result::Result<(), Self::Err> {
                     #(#group_key)*
                     let parent_key = key;
 
                     #(
-                        let entry = match ::config::ConfigGroup::parse_ast_entry(&mut self.#flat_ident, parent_key, entry) {
+                        let entry = match ::config::ConfigGroup::parse_entry(&mut self.#flat_ident, parent_key, entry) {
                             ::std::result::Result::Ok(()) => return ::std::result::Result::Ok(()),
                             ::std::result::Result::Err(::config::ConfigParseGroupError::UnknownKey { entry: rejected_entry, .. }) => rejected_entry,
                             ::std::result::Result::Err(::config::ConfigParseGroupError::UnknownGroupKey { entry: rejected_entry, .. }) => rejected_entry,
@@ -463,12 +463,12 @@ impl<'a> ConfigStruct<'a> {
                     )*
 
                     match entry {
-                        ::config::ast::AstEntry::Group { key, group } => match ::std::ops::Deref::deref(&key) {
+                        ::config::parse::RawEntry::Group { key, body } => match ::std::ops::Deref::deref(&key) {
                             #(#group_key_pattern => if let ::std::result::Result::Err(error) =
-                                ::config::ConfigGroup::parse_ast_group(
+                                ::config::ConfigGroup::parse_group(
                                     &mut self.#group_ident,
                                     ::core::convert::From::from(key),
-                                    group
+                                    body
                                 )
                             {
                                 return ::std::result::Result::Err(
@@ -481,10 +481,10 @@ impl<'a> ConfigStruct<'a> {
                                 );
                             },)*
                             #(_ => if let ::std::result::Result::Err(error) =
-                                ::config::ConfigGroup::parse_ast_group(
+                                ::config::ConfigGroup::parse_group(
                                     &mut self.#any_group_ident,
                                     ::core::convert::From::from(key),
-                                    group
+                                    body
                                 )
                             {
                                 return ::std::result::Result::Err(
@@ -504,7 +504,7 @@ impl<'a> ConfigStruct<'a> {
                                             group: ::config::derive::Bytes::from(
                                                 ::std::clone::Clone::clone(parent_key)
                                             ),
-                                            entry: ::config::ast::AstEntry::Group { key, group },
+                                            entry: ::config::parse::RawEntry::Group { key, body },
                                         }
                                     );
                                 } else {
@@ -513,18 +513,18 @@ impl<'a> ConfigStruct<'a> {
                                             group: ::config::derive::Bytes::from(
                                                 ::std::clone::Clone::clone(parent_key)
                                             ),
-                                            entry: ::config::ast::AstEntry::Group { key, group },
+                                            entry: ::config::parse::RawEntry::Group { key, body },
                                         }
                                     );
                                 }
                             },
                         },
-                        ::config::ast::AstEntry::Operation { key, operation } => match ::std::ops::Deref::deref(&key) {
+                        ::config::parse::RawEntry::Operation { key, body } => match ::std::ops::Deref::deref(&key) {
                             #(#config_key_pattern => if let ::std::result::Result::Err(error) =
-                                ::config::ConfigOperationExt::parse_ast_entry(
+                                ::config::ConfigOperationExt::parse_entry(
                                     &mut self.#config_ident,
                                     ::core::convert::From::from(key),
-                                    operation
+                                    body
                                 )
                             {
                                 return ::std::result::Result::Err(
@@ -544,7 +544,7 @@ impl<'a> ConfigStruct<'a> {
                                             group: ::config::derive::Bytes::from(
                                                 ::std::clone::Clone::clone(parent_key)
                                             ),
-                                            entry: ::config::ast::AstEntry::Operation { key, operation },
+                                            entry: ::config::parse::RawEntry::Operation { key, body },
                                         }
                                     );
                                 } else {
@@ -553,7 +553,7 @@ impl<'a> ConfigStruct<'a> {
                                             group: ::config::derive::Bytes::from(
                                                 ::std::clone::Clone::clone(parent_key)
                                             ),
-                                            entry: ::config::ast::AstEntry::Operation { key, operation },
+                                            entry: ::config::parse::RawEntry::Operation { key, body },
                                         }
                                     );
                                 }

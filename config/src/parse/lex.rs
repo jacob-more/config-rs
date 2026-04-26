@@ -13,12 +13,45 @@ use regex::{
 };
 
 use crate::{
-    ast::{
+    ext::IterJoin,
+    parse::{
         OPERATOR_ADD, OPERATOR_ASSIGN, OPERATOR_ASSIGN_IF_UNDEFINED, OPERATOR_CLEAR,
         OPERATOR_GROUP, OPERATOR_REMOVE, OPERATOR_RESET,
     },
-    ext::IterJoin,
 };
+
+pub static CONFIG_TOKENIZER: LazyLock<Tokenizer> = LazyLock::new(|| {
+    let mut tokenizer = TokenizerBuilder::new();
+    tokenizer.value(concat!(
+        r##""(?<qstring>(?s-u)[^"\\]*)""##, // qstring
+        r"|",
+        r##""(?<qestring>(?s-u)(?:[^"\\]|\\.)*)""##, // qstring + escapes
+        r"|",
+        r"(?<string>(?u-s)[A-Za-z0-9_./](?:[A-Za-z0-9_./\-:]*[A-Za-z0-9_./])?)", // raw string
+        r"|",
+        r"(?<estring>(?s-u)(?:[A-Za-z0-9_./]|\\.)(?:(?:[A-Za-z0-9_./\-:]|\\.)*(?:[A-Za-z0-9_./]|\\.))?)", // raw string + escapes
+    ));
+    let suffix_unary_ops = [regex::escape(OPERATOR_CLEAR), regex::escape(OPERATOR_RESET)]
+        .join('|')
+        .to_string();
+    tokenizer.suffix_unary_op(&suffix_unary_ops);
+    let binary_ops = [
+        regex::escape(OPERATOR_ASSIGN),
+        regex::escape(OPERATOR_ASSIGN_IF_UNDEFINED),
+        regex::escape(OPERATOR_ADD),
+        regex::escape(OPERATOR_REMOVE),
+        regex::escape(OPERATOR_GROUP),
+    ]
+    .join('|')
+    .to_string();
+    tokenizer.binary_op(&binary_ops);
+    tokenizer.grouping_open(r"\{");
+    tokenizer.grouping_close(r"\}");
+    tokenizer.terminator(r";");
+    tokenizer.comment(r"(?-su:#.*)");
+    tokenizer.whitespace(r"(?-u:\s|\r|\n)+");
+    tokenizer.finalize().unwrap()
+});
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Pos {
@@ -53,6 +86,9 @@ impl Debug for Span {
     }
 }
 
+/// For the most part, getting the position is only needed when outputting
+/// errors and other debugging tasks. To keep the happy path cheap, the span &
+/// position information is generated on-the-fly.
 fn get_pos(bytes: &[u8]) -> Pos {
     // Using a regexes here is just to make sure unicode is handled correctly.
     static LINE_END: LazyLock<Regex> =
@@ -74,7 +110,7 @@ fn get_pos(bytes: &[u8]) -> Pos {
 }
 
 macro_rules! patterns {
-    (@inner $($ident:ident),+ $(,)?) => {
+    (@token $($ident:ident),+ $(,)?) => {
         paste! {
             pub enum Token<'a> {
                 $( $ident([<Token $ident>]<'a>), )+
@@ -133,7 +169,7 @@ macro_rules! patterns {
         }
     };
     ($(($ident:ident, $capture:expr)),+ $(,)?) => {
-        patterns!(@inner $($ident,)+ Unknown);
+        patterns!(@token $($ident,)+ Unknown);
 
         paste! {
             $(
@@ -350,36 +386,3 @@ patterns!(
     (Value, "val"),
     (Whitespace, "wtsp"),
 );
-
-pub static CONFIG_LEXICAL_TOKENIZER: LazyLock<Tokenizer> = LazyLock::new(|| {
-    let mut tokenizer = TokenizerBuilder::new();
-    tokenizer.value(concat!(
-        r##""(?<qstring>(?s-u)[^"\\]*)""##, // qstring
-        r"|",
-        r##""(?<qestring>(?s-u)(?:[^"\\]|\\.)*)""##, // qstring + escapes
-        r"|",
-        r"(?<string>(?u-s)[A-Za-z0-9_./](?:[A-Za-z0-9_./\-:]*[A-Za-z0-9_./])?)", // raw string
-        r"|",
-        r"(?<estring>(?s-u)(?:[A-Za-z0-9_./]|\\.)(?:(?:[A-Za-z0-9_./\-:]|\\.)*(?:[A-Za-z0-9_./]|\\.))?)", // raw string + escapes
-    ));
-    let suffix_unary_ops = [regex::escape(OPERATOR_CLEAR), regex::escape(OPERATOR_RESET)]
-        .join('|')
-        .to_string();
-    tokenizer.suffix_unary_op(&suffix_unary_ops);
-    let binary_ops = [
-        regex::escape(OPERATOR_ASSIGN),
-        regex::escape(OPERATOR_ASSIGN_IF_UNDEFINED),
-        regex::escape(OPERATOR_ADD),
-        regex::escape(OPERATOR_REMOVE),
-        regex::escape(OPERATOR_GROUP),
-    ]
-    .join('|')
-    .to_string();
-    tokenizer.binary_op(&binary_ops);
-    tokenizer.grouping_open(r"\{");
-    tokenizer.grouping_close(r"\}");
-    tokenizer.terminator(r";");
-    tokenizer.comment(r"(?-su:#.*)");
-    tokenizer.whitespace(r"(?-u:\s|\r|\n)+");
-    tokenizer.finalize().unwrap()
-});

@@ -4,11 +4,10 @@ use bytes::Bytes;
 use display_as_debug_derive::DisplayAsDebug;
 use thiserror::Error;
 
-use crate::{
-    ast::OPERATOR_GROUP,
+use crate::parse::{
+    OPERATOR_GROUP,
     lex::{
-        CONFIG_LEXICAL_TOKENIZER, Span, Token, TokenBinaryOp, TokenSuffixUnaryOp, TokenValue,
-        Tokenizer,
+        CONFIG_TOKENIZER, Span, Token, TokenBinaryOp, TokenSuffixUnaryOp, TokenValue, Tokenizer,
     },
 };
 
@@ -106,7 +105,7 @@ impl Default for SyntaxParser {
 impl SyntaxParser {
     pub fn new() -> Self {
         Self {
-            tokenizer: CONFIG_LEXICAL_TOKENIZER.clone(),
+            tokenizer: CONFIG_TOKENIZER.clone(),
         }
     }
 }

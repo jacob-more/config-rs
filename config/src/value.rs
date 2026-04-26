@@ -1,8 +1,8 @@
 use std::fmt::Display;
 
 use crate::{
-    ConfigFmt, ConfigOperation, Cval, ICval, Key, Operation, ast::OPERATOR_ASSIGN,
-    header::ConfigHeader,
+    ConfigFmt, ConfigOperation, Cval, ICval, Key, Operation, header::ConfigHeader,
+    parse::OPERATOR_ASSIGN,
 };
 
 #[derive(Debug)]

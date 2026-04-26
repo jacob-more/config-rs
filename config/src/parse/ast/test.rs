@@ -2,12 +2,10 @@ use std::{ffi::OsStr, io::Read, os::unix::ffi::OsStrExt};
 
 use rstest::rstest;
 
-use crate::ast::{
-    Ast, AstEntry, AstParser,
-    parser::{
-        BYTES_OPERATOR_ADD, BYTES_OPERATOR_ASSIGN, BYTES_OPERATOR_ASSIGN_IF_UNDEFINED,
-        BYTES_OPERATOR_CLEAR, BYTES_OPERATOR_REMOVE, BYTES_OPERATOR_RESET,
-    },
+use crate::parse::{
+    Ast, AstEntry, AstParser, BYTES_OPERATOR_ADD, BYTES_OPERATOR_ASSIGN,
+    BYTES_OPERATOR_ASSIGN_IF_UNDEFINED, BYTES_OPERATOR_CLEAR, BYTES_OPERATOR_REMOVE,
+    BYTES_OPERATOR_RESET,
 };
 
 #[rstest]
@@ -24,11 +22,9 @@ use crate::ast::{
 #[case(b"\n# this is a comment\n#")]
 #[case(b"\n# this is a comment\n#\n")]
 fn parse_empty_ast(#[case] input: &[u8]) {
-    let ast = AstParser::new()
-        .parse_bytes(input.to_vec())
-        .parse_into_ast();
+    let ast = AstParser::new().parse(input.to_vec());
     assert!(ast.is_ok(), "error converting input to tree: {ast:?}");
-    assert_eq!(ast.unwrap(), Ast::new());
+    assert_eq!(ast.unwrap(), Ast::default());
 }
 
 #[rstest]
@@ -87,7 +83,9 @@ fn parse_key_assign_value(
     )]
     terminator: &'static [u8],
 ) {
-    use crate::ast::parser::AstParser;
+    use bytes::Bytes;
+
+    use crate::parse::AstParser;
 
     let expected_ast = Ast::from_iter(vec![match operator {
         BYTES_OPERATOR_ASSIGN => AstEntry::new_assign(ast_key, ast_value),
@@ -100,17 +98,17 @@ fn parse_key_assign_value(
         ),
     }]);
 
-    let ast = AstParser::new()
-        .parse_reader(
-            raw_key
-                .chain(pre_op_whitespace)
-                .chain(operator)
-                .chain(post_op_whitespace)
-                .chain(raw_value)
-                .chain(terminator),
-        )
-        .expect("Failed to read chain of raw bytes")
-        .parse_into_ast();
+    let ast = AstParser::new().parse(
+        raw_key
+            .chain(pre_op_whitespace)
+            .chain(operator)
+            .chain(post_op_whitespace)
+            .chain(raw_value)
+            .chain(terminator)
+            .bytes()
+            .collect::<Result<Bytes, std::io::Error>>()
+            .expect("Failed to read chain of raw bytes"),
+    );
     assert!(ast.is_ok(), "error converting input to tree: {ast:?}");
     assert_eq!(ast.unwrap(), expected_ast);
 }
@@ -151,7 +149,9 @@ fn parse_key_reset_value(
     )]
     terminator: &'static [u8],
 ) {
-    use crate::ast::parser::AstParser;
+    use bytes::Bytes;
+
+    use crate::parse::AstParser;
 
     let expected_ast = Ast::from_iter(vec![match operator {
         BYTES_OPERATOR_RESET => AstEntry::new_reset(ast_key),
@@ -162,16 +162,16 @@ fn parse_key_reset_value(
         ),
     }]);
 
-    let ast = AstParser::new()
-        .parse_reader(
-            raw_key
-                .chain(pre_op_whitespace)
-                .chain(operator)
-                .chain(post_op_whitespace)
-                .chain(terminator),
-        )
-        .expect("Failed to read chain of raw bytes")
-        .parse_into_ast();
+    let ast = AstParser::new().parse(
+        raw_key
+            .chain(pre_op_whitespace)
+            .chain(operator)
+            .chain(post_op_whitespace)
+            .chain(terminator)
+            .bytes()
+            .collect::<Result<Bytes, std::io::Error>>()
+            .expect("Failed to read chain of raw bytes"),
+    );
     assert!(ast.is_ok(), "error converting input to tree: {ast:?}");
     assert_eq!(ast.unwrap(), expected_ast);
 }
@@ -220,23 +220,25 @@ fn parse_key_group(
     )]
     terminator: &'static [u8],
 ) {
-    use crate::ast::parser::AstParser;
+    use bytes::Bytes;
+
+    use crate::parse::AstParser;
 
     let expected_ast = Ast::from_iter(vec![AstEntry::new_group(ast_group_key, vec![])]);
 
-    let ast = AstParser::new()
-        .parse_reader(
-            raw_group_key
-                .chain(pre_group_op_whitespace)
-                .chain(b":".as_slice())
-                .chain(post_group_op_whitespace)
-                .chain(b"{".as_slice())
-                .chain(group_inner_whitespace)
-                .chain(b"}".as_slice())
-                .chain(terminator),
-        )
-        .expect("Failed to read chain of raw bytes")
-        .parse_into_ast();
+    let ast = AstParser::new().parse(
+        raw_group_key
+            .chain(pre_group_op_whitespace)
+            .chain(b":".as_slice())
+            .chain(post_group_op_whitespace)
+            .chain(b"{".as_slice())
+            .chain(group_inner_whitespace)
+            .chain(b"}".as_slice())
+            .chain(terminator)
+            .bytes()
+            .collect::<Result<Bytes, std::io::Error>>()
+            .expect("Failed to read chain of raw bytes"),
+    );
     assert!(ast.is_ok(), "error converting input to tree: {ast:?}");
     assert_eq!(ast.unwrap(), expected_ast);
 }
@@ -434,11 +436,9 @@ fn parse_key_group(
         ])
     )]
 fn parse_key_op_value(#[case] input: &[u8], #[case] output: Ast) {
-    use crate::ast::parser::AstParser;
+    use crate::parse::AstParser;
 
-    let ast = AstParser::new()
-        .parse_bytes(input.to_vec())
-        .parse_into_ast();
+    let ast = AstParser::new().parse(input.to_vec());
     assert!(ast.is_ok(), "error converting input to tree: {ast:?}");
     assert_eq!(ast.unwrap(), output);
 }
@@ -551,9 +551,7 @@ fn parse_key_op_value(#[case] input: &[u8], #[case] output: Ast) {
         ])
     )]
 fn parse_group(#[case] input: &[u8], #[case] output: Ast) {
-    let ast = AstParser::new()
-        .parse_bytes(input.to_vec())
-        .parse_into_ast();
+    let ast = AstParser::new().parse(input.to_vec());
     assert!(ast.is_ok(), "error converting input to tree: {ast:?}");
     assert_eq!(ast.unwrap(), output);
 }

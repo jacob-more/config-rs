@@ -9,10 +9,8 @@ use std::{
 use bytes::Bytes;
 use thiserror::Error;
 
-pub mod ast;
 pub mod ext;
-pub mod lex;
-pub mod syn;
+pub mod parse;
 
 mod cval;
 mod fmt;
@@ -40,8 +38,8 @@ pub mod derive {
 }
 
 use crate::{
-    ast::{Ast, AstEntry, AstGroup, AstOperation, AstParseError},
     ext::IterJoin,
+    parse::{AstOperation, ParseError, Parser, RawEntry, RawGroup, RawOperation},
 };
 #[derive(Debug)]
 pub enum Operation<T: ICval> {
@@ -114,11 +112,11 @@ impl From<Infallible> for ConfigParseOperationError {
 #[derive(Debug, Error)]
 pub enum ConfigParseError {
     #[error("{} is not a valid key", .0.display_key())]
-    UnknownKey(AstEntry),
+    UnknownKey(RawEntry),
     #[error("{} is not a valid group key although it might be a valid operation key", .0.display_key())]
-    UnknownGroupKey(AstEntry),
+    UnknownGroupKey(RawEntry),
     #[error("{} is not a valid operation key although it might be a valid group key", .0.display_key())]
-    UnknownOperationKey(AstEntry),
+    UnknownOperationKey(RawEntry),
     #[error(transparent)]
     Group(#[from] ConfigParseGroupError),
     #[error(transparent)]
@@ -133,11 +131,11 @@ impl From<Infallible> for ConfigParseError {
 #[derive(Debug, Error)]
 pub enum ConfigParseGroupError {
     #[error("{} is not a valid key for group {}", .entry.display_key(), OsStr::from_bytes(.group).display())]
-    UnknownKey { group: Bytes, entry: AstEntry },
+    UnknownKey { group: Bytes, entry: RawEntry },
     #[error("{} is not a valid group key although it might be a valid operation key for group {}", .entry.display_key(), OsStr::from_bytes(.group).display())]
-    UnknownGroupKey { group: Bytes, entry: AstEntry },
+    UnknownGroupKey { group: Bytes, entry: RawEntry },
     #[error("{} is not a valid operation key although it might be a valid group key for group {}", .entry.display_key(), OsStr::from_bytes(.group).display())]
-    UnknownOperationKey { group: Bytes, entry: AstEntry },
+    UnknownOperationKey { group: Bytes, entry: RawEntry },
     #[error("error in group {}: {error}", OsStr::from_bytes(.group).display())]
     Group {
         group: Bytes,
@@ -158,13 +156,13 @@ impl From<Infallible> for ConfigParseGroupError {
 #[derive(Debug, Error)]
 pub enum ConfigParseBytesError {
     #[error(transparent)]
-    Ast(#[from] AstParseError),
+    Parse(#[from] ParseError),
     #[error(transparent)]
     Config(#[from] ConfigParseError),
 }
-impl From<AstParseError> for Box<ConfigParseBytesError> {
-    fn from(value: AstParseError) -> Self {
-        Box::new(ConfigParseBytesError::Ast(value))
+impl From<ParseError> for Box<ConfigParseBytesError> {
+    fn from(value: ParseError) -> Self {
+        Box::new(ConfigParseBytesError::Parse(value))
     }
 }
 impl From<Box<ConfigParseError>> for Box<ConfigParseBytesError> {
@@ -183,7 +181,7 @@ pub enum ConfigParseIoError {
     #[error(transparent)]
     Io(#[from] std::io::Error),
     #[error(transparent)]
-    Ast(#[from] AstParseError),
+    Parse(#[from] ParseError),
     #[error(transparent)]
     Config(#[from] ConfigParseError),
 }
@@ -192,9 +190,9 @@ impl From<std::io::Error> for Box<ConfigParseIoError> {
         Box::new(ConfigParseIoError::Io(value))
     }
 }
-impl From<AstParseError> for Box<ConfigParseIoError> {
-    fn from(value: AstParseError) -> Self {
-        Box::new(ConfigParseIoError::Ast(value))
+impl From<ParseError> for Box<ConfigParseIoError> {
+    fn from(value: ParseError) -> Self {
+        Box::new(ConfigParseIoError::Parse(value))
     }
 }
 impl From<Box<ConfigParseError>> for Box<ConfigParseIoError> {
@@ -211,13 +209,13 @@ impl From<Infallible> for ConfigParseIoError {
 pub trait Config {
     type Err;
 
-    fn parse_ast(&mut self, ast: Ast) -> Result<(), Self::Err> {
-        for entry in ast.into_entries() {
-            self.parse_ast_entry(entry)?;
+    fn parse(&mut self, entries: impl Iterator<Item = RawEntry>) -> Result<(), Self::Err> {
+        for entry in entries {
+            self.parse_entry(entry)?;
         }
         Ok(())
     }
-    fn parse_ast_entry(&mut self, entry: AstEntry) -> Result<(), Self::Err>;
+    fn parse_entry(&mut self, entry: RawEntry) -> Result<(), Self::Err>;
     fn replay(&mut self, other: &Self);
     fn display(&self, fmt: ConfigFmt) -> impl Display;
 }
@@ -228,8 +226,7 @@ where
     ConfigParseIoError: From<E>,
 {
     fn parse_bytes(&mut self, bytes: Bytes) -> Result<(), ConfigParseBytesError> {
-        let ast = Ast::from_bytes(bytes)?;
-        self.parse_ast(ast)?;
+        self.parse(Parser::new().parse_bytes(bytes)?)?;
         Ok(())
     }
 
@@ -237,8 +234,7 @@ where
     where
         R: std::io::Read,
     {
-        let ast = Ast::from_reader(reader)??;
-        self.parse_ast(ast)?;
+        self.parse(Parser::new().parse_reader(reader)??)?;
         Ok(())
     }
 
@@ -246,9 +242,7 @@ where
     where
         P: AsRef<std::path::Path>,
     {
-        let file = std::fs::File::open(path)?;
-        let ast = Ast::from_reader(file)??;
-        self.parse_ast(ast)?;
+        self.parse(Parser::new().parse_file(path)??)?;
         Ok(())
     }
 
@@ -293,13 +287,13 @@ pub trait ConfigGroup {
     type Err;
 
     fn new(key: Key) -> Self;
-    fn parse_ast_group(&mut self, key: Key, group: AstGroup) -> Result<(), Self::Err> {
-        for entry in group.into_entries() {
-            self.parse_ast_entry(&key, entry)?;
+    fn parse_group(&mut self, key: Key, body: RawGroup) -> Result<(), Self::Err> {
+        for entry in body.0 {
+            self.parse_entry(&key, RawEntry::new(entry))?;
         }
         Ok(())
     }
-    fn parse_ast_entry(&mut self, key: &Key, entry: AstEntry) -> Result<(), Self::Err>;
+    fn parse_entry(&mut self, key: &Key, body: RawEntry) -> Result<(), Self::Err>;
     fn replay(&mut self, other: &Self);
     fn display(&self, fmt: ConfigFmt) -> impl Display;
 }
@@ -331,14 +325,14 @@ where
     Cval<T>: TryFrom<bytes::Bytes, Error = E>,
     ConfigParseOperationError: From<E>,
 {
-    fn parse_ast_entry(
+    fn parse_entry(
         &mut self,
         key: Key,
-        operation: AstOperation,
+        body: RawOperation,
     ) -> Result<(), ConfigParseOperationError> {
         let _ = key; // key is unused here, but required for the trait.
 
-        match operation {
+        match body.0 {
             AstOperation::Assign(value) => self.assign(Cval::try_from(value)?),
             AstOperation::AssignIfUndefined(value) => {
                 self.assign_if_undefined(Cval::try_from(value)?)
@@ -381,18 +375,18 @@ where
 {
     type Err = ConfigParseError;
 
-    fn parse_ast_entry(&mut self, entry: AstEntry) -> Result<(), Self::Err> {
+    fn parse_entry(&mut self, entry: RawEntry) -> Result<(), Self::Err> {
         match entry {
-            AstEntry::Group { key, group } => {
+            RawEntry::Group { key, body } => {
                 let key = Key::from(key);
                 self.entry(key.clone())
                     .or_insert_with(|| ConfigGroup::new(key.clone()))
-                    .parse_ast_group(key, group)?;
+                    .parse_group(key, body)?;
             }
-            AstEntry::Operation { key, operation } => {
-                return Err(ConfigParseError::UnknownOperationKey(AstEntry::Operation {
+            RawEntry::Operation { key, body } => {
+                return Err(ConfigParseError::UnknownOperationKey(RawEntry::Operation {
                     key,
-                    operation,
+                    body,
                 }));
             }
         }
@@ -430,30 +424,30 @@ where
         Self::default()
     }
 
-    fn parse_ast_group(&mut self, key: Key, group: AstGroup) -> Result<(), Self::Err> {
-        self.parse_ast_entry(
+    fn parse_group(&mut self, key: Key, body: RawGroup) -> Result<(), Self::Err> {
+        self.parse_entry(
             &key,
-            AstEntry::Group {
+            RawEntry::Group {
                 key: key.clone().into_bytes(),
-                group,
+                body,
             },
         )
     }
 
-    fn parse_ast_entry(&mut self, key: &Key, entry: AstEntry) -> Result<(), Self::Err> {
+    fn parse_entry(&mut self, key: &Key, entry: RawEntry) -> Result<(), Self::Err> {
         let parent_group = key;
 
         match entry {
-            AstEntry::Group { key, group } => {
+            RawEntry::Group { key, body } => {
                 let key = Key::from(key);
                 self.entry(key.clone())
                     .or_insert_with(|| ConfigGroup::new(key.clone()))
-                    .parse_ast_group(key, group)?;
+                    .parse_group(key, body)?;
             }
-            AstEntry::Operation { key, operation } => {
+            RawEntry::Operation { key, body } => {
                 return Err(ConfigParseGroupError::UnknownOperationKey {
                     group: parent_group.clone().into_bytes(),
-                    entry: AstEntry::Operation { key, operation },
+                    entry: RawEntry::Operation { key, body },
                 });
             }
         }
@@ -487,6 +481,8 @@ mod test {
 
     use rstest::rstest;
 
+    use crate::parse::Parser;
+
     static EXAMPLES_DIRECTORY: LazyLock<PathBuf> = LazyLock::new(|| {
         let mut examples_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         examples_path.push("benches");
@@ -500,20 +496,13 @@ mod test {
     #[case("empty.conf")]
     #[case("root_hints.conf")]
     #[case("short_cargo.lock.conf")]
-    fn test_parse_to_ast(#[case] file_name: &str) {
-        use std::fs::read_to_string;
-
-        use bytes::Bytes;
-
+    fn test_parse_to_entries(#[case] file_name: &str) {
         let mut config_path = EXAMPLES_DIRECTORY.clone();
         config_path.push("config_name");
 
-        let file_data = Bytes::from(
-            read_to_string(config_path.with_file_name(file_name))
-                .unwrap()
-                .into_bytes(),
-        );
-        let ast = crate::ast::Ast::from_bytes(file_data);
+        let ast = Parser::new()
+            .parse_file(config_path.with_file_name(file_name))
+            .unwrap();
         assert!(ast.is_ok(), "AST is not Ok: {ast:?}");
     }
 }
