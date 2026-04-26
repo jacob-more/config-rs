@@ -346,6 +346,7 @@ macro_rules! patterns {
                 fn next(&mut self) -> Option<Self::Item> {
                     let captures = self.captures.peek()?;
                     if self.last_end < captures.get_match().start() {
+                        std::hint::cold_path();
                         let result = Some(Token::Unknown(TokenUnknown {
                             buffer: self.buffer,
                             start: self.last_end,
@@ -354,6 +355,7 @@ macro_rules! patterns {
                         self.last_end = captures.get_match().start();
                         return result;
                     }
+
                     let captures = self.captures
                         .next()
                         .expect("peek operation succeeded. At least one value remained");
