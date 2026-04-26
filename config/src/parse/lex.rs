@@ -377,12 +377,12 @@ macro_rules! patterns {
     };
 }
 patterns!(
-    (SuffixUnaryOp, "sufuop"),
+    (Whitespace, "wtsp"),
+    (Value, "val"),
     (BinaryOp, "binop"),
+    (SuffixUnaryOp, "sufuop"),
     (GroupingOpen, "grpopn"),
     (GroupingClose, "grpcls"),
     (Terminator, "term"),
     (Comment, "cmt"),
-    (Value, "val"),
-    (Whitespace, "wtsp"),
 );
