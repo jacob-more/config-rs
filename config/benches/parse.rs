@@ -7,7 +7,7 @@ use std::{
 };
 
 use bytes::Bytes;
-use config::parse::__private::{AstParser, CONFIG_TOKENIZER, SyntaxParser, Tokenizer};
+use config::parse::__private::{AstParser, SyntaxParser, Tokenizer};
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 
 static EXAMPLES_DIRECTORY: LazyLock<PathBuf> = LazyLock::new(|| {
@@ -44,7 +44,7 @@ fn parse_to_lex(tokenizer: &Tokenizer, read_bytes: Bytes) {
         .for_each(|token| drop(black_box(token)));
 }
 fn bench_parse_to_lex(c: &mut Criterion) {
-    let tokenizer = CONFIG_TOKENIZER.clone();
+    let tokenizer = Tokenizer::new();
     for (name, data) in bench_cases() {
         c.bench_with_input(
             BenchmarkId::new("ParseToLex", &name),

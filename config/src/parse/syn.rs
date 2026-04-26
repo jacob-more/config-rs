@@ -6,9 +6,7 @@ use thiserror::Error;
 
 use crate::parse::{
     OPERATOR_GROUP,
-    lex::{
-        CONFIG_TOKENIZER, Span, Token, TokenBinaryOp, TokenSuffixUnaryOp, TokenValue, Tokenizer,
-    },
+    lex::{Span, Token, TokenBinaryOp, TokenSuffixUnaryOp, TokenValue, Tokenizer},
 };
 
 #[derive(DisplayAsDebug, Error)]
@@ -69,7 +67,7 @@ impl From<ReprSyntaxError> for SyntaxError {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Default, Clone)]
 pub struct SyntaxParser {
     tokenizer: Tokenizer,
 }
@@ -96,17 +94,9 @@ pub(crate) enum SyntaxTreeEntry<'a> {
     },
 }
 
-impl Default for SyntaxParser {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl SyntaxParser {
     pub fn new() -> Self {
-        Self {
-            tokenizer: CONFIG_TOKENIZER.clone(),
-        }
+        Self::default()
     }
 }
 
