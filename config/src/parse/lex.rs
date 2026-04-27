@@ -11,6 +11,9 @@ use crate::parse::{
     OPERATOR_REMOVE, OPERATOR_RESET,
 };
 
+#[cfg(test)]
+mod test;
+
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Pos {
     pub line: usize,

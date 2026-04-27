@@ -139,6 +139,19 @@ fn generate_token_structs(lex: &LexEnum) -> proc_macro2::TokenStream {
                         .finish()
                 }
             }
+
+            impl<'a> ::std::cmp::PartialEq for #token_ident<'a> {
+                fn eq(&self, other: &Self) -> bool {
+                    self.as_slice() == other.as_slice()
+                }
+            }
+            impl<'a> ::std::cmp::Eq for #token_ident<'a> {}
+
+            impl<'a> ::std::hash::Hash for #token_ident<'a> {
+                fn hash<H: ::std::hash::Hasher>(&self, state: &mut H) {
+                    self.as_slice().hash(state);
+                }
+            }
         )*
     }
 }
@@ -154,6 +167,7 @@ fn generate_token_enum(lex: &LexEnum) -> proc_macro2::TokenStream {
     let token_ident = lex.variants.iter().map(|var| var.token_ident(ident));
 
     quote! {
+        #[derive(PartialEq, Eq, Hash)]
         #vis enum #ident<'a> {
             #( #case_ident(#token_ident<'a>), )*
         }
