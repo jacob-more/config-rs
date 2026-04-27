@@ -100,8 +100,7 @@ impl AsBytes for PropResetOp {
 enum PropString {
     Quoted(#[proptest(regex = r#"(?s-u:[^"\\]|\\.)*"#)] Vec<u8>),
     Unquoted(
-        #[proptest(regex = r#"(?s-u:[A-Za-z0-9_./](?:[A-Za-z0-9_./\-:]*[A-Za-z0-9_./])?)"#)]
-        Vec<u8>,
+        #[proptest(regex = r#"(?s-u:[A-Za-z0-9_./](?:[A-Za-z0-9_./\-]*[A-Za-z0-9_./])?)"#)] Vec<u8>,
     ),
 }
 impl PropString {

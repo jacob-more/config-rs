@@ -34,8 +34,8 @@ fn parse_key_assign_value(
         (b"KEY".as_slice(), b"KEY".as_slice()),
         (b"\"KEY\"".as_slice(), b"KEY".as_slice()),
         (
-            b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789./-:_".as_slice(),
-            b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789./-:_".as_slice()
+            b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789./-_".as_slice(),
+            b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789./-_".as_slice()
         ),
         (
             b"\"Key with \\!\\@\\#\\$\\%\\^\\&\\*\\(\\)\\-\\=\\{\\}\\[\\]\\|\\\\\\:\\;\\\"\\'\\<\\>\\,\\.\\?\\/\\~\\` \\\"escape\\\" characters\"".as_slice(),
@@ -67,8 +67,8 @@ fn parse_key_assign_value(
         (b"VALUE".as_slice(), b"VALUE".as_slice()),
         (b"\"VALUE\"".as_slice(), b"VALUE".as_slice()),
         (
-            b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789./-:_".as_slice(),
-            b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789./-:_".as_slice()
+            b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789./-_".as_slice(),
+            b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789./-_".as_slice()
         ),
         (
             b"\"Value with \\*\\$\\\"escape\\\" characters\"".as_slice(),
@@ -120,8 +120,8 @@ fn parse_key_reset_value(
         (b"KEY".as_slice(), b"KEY".as_slice()),
         (b"\"KEY\"".as_slice(), b"KEY".as_slice()),
         (
-            b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789./-:_".as_slice(),
-            b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789./-:_".as_slice()
+            b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789./-_".as_slice(),
+            b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789./-_".as_slice()
         ),
         (
             b"\"Key with \\!\\@\\#\\$\\%\\^\\&\\*\\(\\)\\-\\=\\{\\}\\[\\]\\|\\\\\\:\\;\\\"\\'\\<\\>\\,\\.\\?\\/\\~\\` \\\"escape\\\" characters\"".as_slice(),
@@ -183,8 +183,8 @@ fn parse_key_group(
         (b"KEY".as_slice(), b"KEY".as_slice()),
         (b"\"KEY\"".as_slice(), b"KEY".as_slice()),
         (
-            b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789./-:_".as_slice(),
-            b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789./-:_".as_slice()
+            b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789./-_".as_slice(),
+            b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789./-_".as_slice()
         ),
         (
             b"\"Key with \\!\\@\\#\\$\\%\\^\\&\\*\\(\\)\\-\\=\\{\\}\\[\\]\\|\\\\\\:\\;\\\"\\'\\<\\>\\,\\.\\?\\/\\~\\` \\\"escape\\\" characters\"".as_slice(),

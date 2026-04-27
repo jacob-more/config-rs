@@ -12,6 +12,8 @@ use crate::parse::{
 };
 
 #[cfg(test)]
+mod property_test;
+#[cfg(test)]
 mod test;
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -73,10 +75,10 @@ fn get_pos(bytes: &[u8]) -> Pos {
 lex! {
     pub enum Token {
         Whitespace = r"(?-u:\s|\r|\n)+",
-        Value = r##""(?<qstring>(?s-u)[^"\\]*)""##
-            | r##""(?<qestring>(?s-u)(?:[^"\\]|\\.)*)""##
-            | r"(?<string>(?u-s)[A-Za-z0-9_./](?:[A-Za-z0-9_./\-:]*[A-Za-z0-9_./])?)"
-            | r"(?<estring>(?s-u)(?:[A-Za-z0-9_./]|\\.)(?:(?:[A-Za-z0-9_./\-:]|\\.)*(?:[A-Za-z0-9_./]|\\.))?)",
+        Value = r##""(?<qestring>(?s-u)[^"\\]*\\.(?:[^"\\]|\\.)*)""##
+            | r##""(?<qstring>(?s-u)[^"\\]*)""##
+            | r"(?<estring>(?s-u)(?:[A-Za-z0-9_./][A-Za-z0-9_./\-]*)?\\.(?:(?:[A-Za-z0-9_./\-]|\\.)*(?:[A-Za-z0-9_./]|\\.))?)"
+            | r"(?<string>(?u-s)[A-Za-z0-9_./](?:[A-Za-z0-9_./\-]*[A-Za-z0-9_./])?)",
         BinaryOp = OPERATOR_ASSIGN
             | OPERATOR_ASSIGN_IF_UNDEFINED
             | OPERATOR_ADD
@@ -86,7 +88,7 @@ lex! {
         GroupingOpen = r"\{",
         GroupingClose = r"\}",
         Terminator = r";",
-        Comment = r"(?-su:#.*)",
+        Comment = r"(?-su:#.*(?:\n|\z))",
         Unknown = _,
     }
 }

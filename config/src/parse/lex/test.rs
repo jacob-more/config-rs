@@ -52,7 +52,7 @@ fn tokenize_whitespace(#[case] whitespace: &'static str) {
 #[case(r"012")]
 #[case(r"0a")]
 #[case(r"a0")]
-#[case(r"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-:_./")]
+#[case(r"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_./")]
 #[case(r"_")]
 #[case(r".")]
 #[case(r"/")]
@@ -69,7 +69,7 @@ fn tokenize_whitespace(#[case] whitespace: &'static str) {
 #[case(r#""012""#)]
 #[case(r#""0a""#)]
 #[case(r#""a0""#)]
-#[case(r#""ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-:_./""#)]
+#[case(r#""ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_./""#)]
 #[case(r#""_""#)]
 #[case(r#"".""#)]
 #[case(r#""/""#)]
@@ -233,12 +233,19 @@ fn tokenize_terminator(#[case] terminator: &'static str) {
 
 #[rstest]
 #[case("#")]
+#[case("#\n")]
 #[case("# ")]
+#[case("# \n")]
 #[case("# this is some text")]
+#[case("# this is some text\n")]
 #[case("# this is some text wit & *() strange characters \r but not a newline")]
+#[case("# this is some text wit & *() strange characters \r but not a newline\n")]
 #[case("# \"a string in a comment? oh my!\"")]
+#[case("# \"a string in a comment? oh my!\"\n")]
 #[case("# COMMENTED_OUT=KEY_VALUE_PAIR;")]
+#[case("# COMMENTED_OUT=KEY_VALUE_PAIR;\n")]
 #[case("# COMMENTED_OUT: { KEY_VALUE_PAIR=IN_A_GROUP; }; ")]
+#[case("# COMMENTED_OUT: { KEY_VALUE_PAIR=IN_A_GROUP; };\n")]
 fn tokenize_comment(#[case] comment: &'static str) {
     use bytes::Bytes;
 
