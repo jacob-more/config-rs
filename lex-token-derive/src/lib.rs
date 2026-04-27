@@ -336,7 +336,24 @@ fn generate_token_iter(lex: &LexEnum) -> proc_macro2::TokenStream {
             type Item = #ident<'h>;
 
             fn next(&mut self) -> Option<Self::Item> {
-                let captures = self.captures.peek()?;
+                let Some(captures) = self.captures.peek() else {
+                    if self.last_end < self.buffer.len() {
+                        std::hint::cold_path();
+                        let result = Some(
+                            #ident::#case_ident_catchall(
+                                #token_ident_catchall {
+                                    buffer: self.buffer,
+                                    start: self.last_end,
+                                    end: self.buffer.len(),
+                                }
+                            )
+                        );
+                        self.last_end = self.buffer.len();
+                        return result;
+                    }
+                    return None;
+                };
+
                 let matched = captures.get_match();
                 if self.last_end < matched.start() {
                     std::hint::cold_path();
