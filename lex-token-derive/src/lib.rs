@@ -51,19 +51,17 @@ fn generate_token_structs(lex: &LexEnum) -> proc_macro2::TokenStream {
 
                 impl<'a> #token_ident<'a> {
                     pub fn as_slice(&self) -> &'a [u8] {
-                        let matched = self.captures.get_match();
-                        &self.buffer[matched.start()..matched.end()]
+                        &self.buffer[self.captures.get_match().range()]
                     }
 
                     pub fn as_bytes(&self) -> ::bytes::Bytes {
-                        let matched = self.captures.get_match();
-                        self.buffer.slice(matched.start()..matched.end())
+                        self.buffer.slice(self.captures.get_match().range())
                     }
 
                     pub fn span(&self) -> Span {
                         let matched = self.captures.get_match();
                         let start = get_pos(&self.buffer[..matched.start()]);
-                        let mut end = get_pos(&self.buffer[matched.start()..matched.end()]);
+                        let mut end = get_pos(&self.buffer[matched.range()]);
                         end.line += start.line;
                         if start.line == end.line {
                             end.column += start.column;
