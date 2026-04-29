@@ -1,4 +1,4 @@
-use std::hint::black_box;
+use std::{hint::black_box, iter::Peekable};
 
 use bytes::Bytes;
 use proptest::prelude::*;
@@ -225,6 +225,94 @@ impl std::fmt::Debug for PropToken {
     }
 }
 
+fn fixup_neighbors<'a>(tokens: impl IntoIterator<Item = PropToken>) -> Vec<PropToken> {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+    enum Last {
+        Whitespace,
+        Value,
+        BinaryOp,
+        SuffixUnaryOp,
+        GroupingOpen,
+        GroupingClose,
+        Terminator,
+        Comment,
+    }
+
+    struct NeighborFixup<I: Iterator> {
+        tokens: Peekable<I>,
+        last: Option<Last>,
+    }
+
+    impl<I: Iterator<Item = PropToken>> Iterator for NeighborFixup<I> {
+        type Item = PropToken;
+
+        fn next(&mut self) -> Option<Self::Item> {
+            let token = self.tokens.peek()?;
+            let this = match token {
+                PropToken::Whitespace(_) => Last::Whitespace,
+                PropToken::Value(_) => Last::Value,
+                PropToken::BinaryOp(_) => Last::BinaryOp,
+                PropToken::SuffixUnaryOp(_) => Last::SuffixUnaryOp,
+                PropToken::GroupingOpen(_) => Last::GroupingOpen,
+                PropToken::GroupingClose(_) => Last::GroupingClose,
+                PropToken::Terminator(_) => Last::Terminator,
+                PropToken::Comment(_) => Last::Comment,
+            };
+
+            match (self.last, token) {
+                (Some(Last::Whitespace), PropToken::Whitespace(_)) => {
+                    // Neighboring whitespace would get interpreted as a single
+                    // whitespace token.
+                    let _ = self.tokens.next();
+                    return self.next();
+                }
+                (
+                    Some(Last::BinaryOp | Last::SuffixUnaryOp),
+                    PropToken::BinaryOp(_) | PropToken::SuffixUnaryOp(_),
+                ) => {
+                    // Operators cannot be neighbors as they could combine to
+                    // form other operators. Inserting a separator solves this
+                    // issue.
+                    self.last = Some(Last::Whitespace);
+                    return Some(PropToken::Whitespace(PropWhitespace { val: b" ".to_vec() }));
+                }
+                (Some(Last::Value), PropToken::Value(_)) => {
+                    // Values cannot be neighbors as they could combine to form
+                    // other values. The only accept is if one of those values
+                    // is quoted, but we don't escape for that case right now.
+                    self.last = Some(Last::Whitespace);
+                    return Some(PropToken::Whitespace(PropWhitespace { val: b" ".to_vec() }));
+                }
+                _ => (),
+            }
+            self.last = Some(this);
+            return self.tokens.next();
+        }
+    }
+
+    NeighborFixup {
+        tokens: tokens.into_iter().peekable(),
+        last: None,
+    }
+    .collect()
+}
+
+fn impl_test_many_tokens(input_tokens: &[PropToken]) {
+    let tokenizer = Tokenizer::new();
+    let input = Bytes::from_iter(input_tokens.iter().flat_map(|token| token.bytes()));
+    let mut tokens = tokenizer.tokenize(&input);
+    for input_token in input_tokens {
+        let next_token = tokens.next();
+        assert!(
+            next_token
+                .as_ref()
+                .is_some_and(|token| input_token.matches(&token)),
+            "expected {input_token:?} but found {next_token:?}"
+        );
+    }
+    assert_eq!(tokens.next(), None);
+}
+
 proptest! {
     #[test]
     fn no_panics(input: Vec<u8>) {
@@ -236,88 +324,21 @@ proptest! {
 
     #[test]
     fn one_token(input_token: PropToken) {
-        let tokenizer = Tokenizer::new();
-        let input = input_token.as_input();
-        let mut tokens = tokenizer.tokenize(&input);
-        let next_token = tokens.next();
-        assert!(
-            next_token
-                .as_ref()
-                .is_some_and(|token| input_token.matches(&token)),
-            "expected {input_token:?} but found {next_token:?}"
-        );
-        assert_eq!(tokens.next(), None);
+        impl_test_many_tokens(&[input_token]);
     }
 
     #[test]
-    fn two_tokens(input_token_1: PropToken, input_token_2: PropToken) {
-        if matches!(input_token_1, PropToken::BinaryOp(_) | PropToken::SuffixUnaryOp(_)) {
-            prop_assume!(!matches!(input_token_2, PropToken::BinaryOp(_) | PropToken::SuffixUnaryOp(_)));
-        }
-        if matches!(input_token_1, PropToken::Whitespace(_)) {
-            prop_assume!(!matches!(input_token_2, PropToken::Whitespace(_)));
-        }
-        if matches!(input_token_1, PropToken::Value(PropValue::Raw(_) | PropValue::RawEscaped(_))) {
-            prop_assume!(!matches!(input_token_2, PropToken::Value(PropValue::Raw(_) | PropValue::RawEscaped(_))));
-        }
-
-        let tokenizer = Tokenizer::new();
-        let input = Bytes::from_iter(input_token_1.bytes().chain(input_token_2.bytes()));
-        let mut tokens = tokenizer.tokenize(&input);
-        let first_token = tokens.next();
-        assert!(
-            first_token
-                .as_ref()
-                .is_some_and(|token| input_token_1.matches(&token)),
-            "expected {input_token_1:?} but found {first_token:?}"
-        );
-        let second_token = tokens.next();
-        assert!(
-            second_token
-                .as_ref()
-                .is_some_and(|token| input_token_2.matches(&token)),
-            "expected {input_token_2:?} but found {second_token:?}"
-        );
-        assert_eq!(tokens.next(), None);
+    fn two_tokens(input_tokens in any::<[PropToken; 2]>().prop_map(fixup_neighbors)) {
+        impl_test_many_tokens(&input_tokens);
     }
 
     #[test]
-    fn many_tokens(input_tokens in any::<Vec<PropToken>>().prop_map(|mut tokens| {
-        let mut last_was_rawstr = false;
-        let mut last_was_whitespace = false;
-        let mut last_was_op = false;
-        tokens.retain(|token| {
-            let this_is_whitespace = matches!(token, PropToken::Whitespace(_));
-            let this_is_rawstr = matches!(token, PropToken::Value(PropValue::Raw(_) | PropValue::RawEscaped(_)));
-            let this_is_op = matches!(token, PropToken::BinaryOp(_) | PropToken::SuffixUnaryOp(_));
-            if this_is_whitespace && last_was_whitespace {
-                return false;
-            }
-            if this_is_rawstr && last_was_rawstr {
-                return false;
-            }
-            if this_is_op && last_was_op {
-                return false;
-            }
-            last_was_whitespace = this_is_whitespace;
-            last_was_rawstr = this_is_rawstr;
-            last_was_op = this_is_op;
-            true
-        });
-        tokens
-    })) {
-        let tokenizer = Tokenizer::new();
-        let input = Bytes::from_iter(input_tokens.iter().flat_map(|token| token.bytes()));
-        let mut tokens = tokenizer.tokenize(&input);
-        for input_token in input_tokens {
-            let next_token = tokens.next();
-            assert!(
-                next_token
-                    .as_ref()
-                    .is_some_and(|token| input_token.matches(&token)),
-                "expected {input_token:?} but found {next_token:?}"
-            );
-        }
-        assert_eq!(tokens.next(), None);
+    fn three_tokens(input_tokens in any::<[PropToken; 3]>().prop_map(fixup_neighbors)) {
+        impl_test_many_tokens(&input_tokens);
+    }
+
+    #[test]
+    fn many_tokens(input_tokens in any::<Vec<PropToken>>().prop_map(fixup_neighbors)) {
+        impl_test_many_tokens(&input_tokens);
     }
 }
