@@ -35,46 +35,78 @@ fn generate_token_structs(lex: &LexEnum) -> proc_macro2::TokenStream {
         .filter(|(_, var)| !var.patterns.is_capturing())
         .map(|(ident, _)| ident)
         .collect::<Vec<_>>();
-    let capturing_token_ident = token_idents
+    let (capturing_token_ident, capturing_names): (Vec<_>, Vec<_>) = token_idents
         .clone()
         .filter(|(_, var)| var.patterns.is_capturing())
-        .map(|(ident, _)| ident)
-        .collect::<Vec<_>>();
+        .map(|(ident, var)| (ident, var.patterns.extra_capture_names()))
+        .unzip();
 
-    fn generate_capturing_token_struct(vis: &Visibility, token_ident: &[Ident]) -> TokenStream {
+    fn generate_capturing_token_struct(
+        vis: &Visibility,
+        token_ident: &[Ident],
+        capture_name: &[Vec<Option<&str>>],
+    ) -> TokenStream {
+        let captures_count = capture_name.iter().map(|names| names.len());
+        let (capture_index, capture_name): (Vec<_>, Vec<_>) = capture_name
+            .iter()
+            .map(|names| {
+                let (indices, names): (Vec<_>, Vec<_>) = names
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(index, name)| Some((index, (*name)?)))
+                    .unzip();
+                (indices, names)
+            })
+            .unzip();
         quote! {
             #(
                 #vis struct #token_ident<'a> {
                     pub(crate) buffer: &'a ::bytes::Bytes,
-                    pub(crate) captures: regex::bytes::Captures<'a>,
+                    pub(crate) start: usize,
+                    pub(crate) end: usize,
+                    pub(crate) captures: [Option<(usize, usize)>; #captures_count],
                 }
 
                 impl<'a> #token_ident<'a> {
-                    pub fn as_slice(&self) -> &'a [u8] {
-                        &self.buffer[self.captures.get_match().range()]
-                    }
-
-                    pub fn as_bytes(&self) -> ::bytes::Bytes {
-                        self.buffer.slice(self.captures.get_match().range())
-                    }
-
-                    pub fn span(&self) -> Span {
-                        let matched = self.captures.get_match();
-                        let start = get_pos(&self.buffer[..matched.start()]);
-                        let mut end = get_pos(&self.buffer[matched.range()]);
-                        end.line += start.line;
-                        if start.line == end.line {
-                            end.column += start.column;
+                    pub fn get_slice(&self, i: usize) -> Option<&'a [u8]> {
+                        if 0 == i {
+                            Some(&self.buffer[self.start..self.end])
+                        } else {
+                            self.captures
+                                .get(i - 1)
+                                .and_then(|pair| pair.as_ref())
+                                .map(|(start, end)| &self.buffer[*start..*end])
                         }
-                        Span { start, end }
                     }
-
-                    pub fn start(&self) -> Pos {
-                        get_pos(&self.buffer[..self.captures.get_match().start()])
+                    pub fn get_bytes(&self, i: usize) -> Option<::bytes::Bytes> {
+                        if 0 == i {
+                            Some(self.buffer.slice(self.start..self.end))
+                        } else {
+                            self.captures
+                                .get(i - 1)
+                                .and_then(|pair| pair.as_ref())
+                                .map(|(start, end)| self.buffer.slice(start..end))
+                        }
                     }
-
-                    pub fn end(&self) -> Pos {
-                        get_pos(&self.buffer[..self.captures.get_match().end()])
+                    pub fn name_slice(&self, name: &str) -> Option<&'a [u8]> {
+                        match name {
+                            #(
+                                #capture_name => self.captures[#capture_index].map(|(start, end)| {
+                                    &self.buffer[start..end]
+                                }),
+                            )*
+                            _ => None,
+                        }
+                    }
+                    pub fn name_bytes(&self, name: &str) -> Option<::bytes::Bytes> {
+                        match name {
+                            #(
+                                #capture_name => self.captures[#capture_index].map(|(start, end)| {
+                                    self.buffer.slice(start..end)
+                                }),
+                            )*
+                            _ => None,
+                        }
                     }
                 }
             )*
@@ -89,39 +121,12 @@ fn generate_token_structs(lex: &LexEnum) -> proc_macro2::TokenStream {
                     pub(crate) start: usize,
                     pub(crate) end: usize,
                 }
-
-                impl<'a> #token_ident<'a> {
-                    pub fn as_slice(&self) -> &'a [u8] {
-                        &self.buffer[self.start..self.end]
-                    }
-
-                    pub fn as_bytes(&self) -> ::bytes::Bytes {
-                        self.buffer.slice(self.start..self.end)
-                    }
-
-                    pub fn span(&self) -> Span {
-                        let start = get_pos(&self.buffer[..self.start]);
-                        let mut end = get_pos(&self.buffer[self.start..self.end]);
-                        end.line += start.line;
-                        if start.line == end.line {
-                            end.column += start.column;
-                        }
-                        Span { start, end }
-                    }
-
-                    pub fn start(&self) -> Pos {
-                        get_pos(&self.buffer[..self.start])
-                    }
-
-                    pub fn end(&self) -> Pos {
-                        get_pos(&self.buffer[..self.end])
-                    }
-                }
             )*
         }
     }
 
-    let capturing_tokens = generate_capturing_token_struct(vis, &capturing_token_ident);
+    let capturing_tokens =
+        generate_capturing_token_struct(vis, &capturing_token_ident, &capturing_names);
     let non_capturing_tokens = generate_non_capturing_token_struct(vis, &non_capturing_token_ident);
 
     quote! {
@@ -148,6 +153,34 @@ fn generate_token_structs(lex: &LexEnum) -> proc_macro2::TokenStream {
             impl<'a> ::std::hash::Hash for #token_ident<'a> {
                 fn hash<H: ::std::hash::Hasher>(&self, state: &mut H) {
                     self.as_slice().hash(state);
+                }
+            }
+
+            impl<'a> #token_ident<'a> {
+                pub fn as_slice(&self) -> &'a [u8] {
+                    &self.buffer[self.start..self.end]
+                }
+
+                pub fn as_bytes(&self) -> ::bytes::Bytes {
+                    self.buffer.slice(self.start..self.end)
+                }
+
+                pub fn span(&self) -> Span {
+                    let start = get_pos(&self.buffer[..self.start]);
+                    let mut end = get_pos(&self.buffer[self.start..self.end]);
+                    end.line += start.line;
+                    if start.line == end.line {
+                        end.column += start.column;
+                    }
+                    Span { start, end }
+                }
+
+                pub fn start(&self) -> Pos {
+                    get_pos(&self.buffer[..self.start])
+                }
+
+                pub fn end(&self) -> Pos {
+                    get_pos(&self.buffer[..self.end])
                 }
             }
         )*
@@ -298,21 +331,31 @@ fn generate_token_iter(lex: &LexEnum) -> proc_macro2::TokenStream {
             let token_ident = var.token_ident(ident);
 
             let tokens = if var.patterns.is_capturing() {
+                let captures = (1..=var.patterns.extra_capture_count()).map(|offset| {
+                    let index = offset + index;
+                    quote! {
+                        self.capture_locs
+                            .get(#index)
+                            .map(|(start, end)| (offset + start, offset + end)),
+                    }
+                });
                 quote! {
-                    if captures.get(#index).is_some() {
+                    if self.capture_locs.get(#index).is_some() {
                         return Some(#ident::#case_ident(#token_ident {
                             buffer: self.buffer,
-                            captures,
+                            start: offset + matched.start(),
+                            end: offset + matched.end(),
+                            captures: [ #(#captures)* ],
                         }))
                     }
                 }
             } else {
                 quote! {
-                    if captures.get(#index).is_some() {
+                    if self.capture_locs.get(#index).is_some() {
                         return Some(#ident::#case_ident(#token_ident {
                             buffer: self.buffer,
-                            start: matched.start(),
-                            end: matched.end(),
+                            start: offset + matched.start(),
+                            end: offset + matched.end(),
                         }))
                     }
                 }
@@ -328,7 +371,7 @@ fn generate_token_iter(lex: &LexEnum) -> proc_macro2::TokenStream {
             buffer: &'h ::bytes::Bytes,
             tokenizer: &'r Tokenizer,
             last_end: usize,
-            captures: ::std::iter::Peekable<::regex::bytes::CaptureMatches<'r, 'h>>,
+            capture_locs: ::regex::bytes::CaptureLocations,
         }
 
         impl<'r, 'h> #iter_ident<'r, 'h> {
@@ -337,9 +380,7 @@ fn generate_token_iter(lex: &LexEnum) -> proc_macro2::TokenStream {
                     buffer,
                     tokenizer,
                     last_end: 0,
-                    captures: tokenizer.pattern
-                        .captures_iter(&**buffer)
-                        .peekable(),
+                    capture_locs: tokenizer.pattern.capture_locations(),
                 }
             }
         }
@@ -348,46 +389,43 @@ fn generate_token_iter(lex: &LexEnum) -> proc_macro2::TokenStream {
             type Item = #ident<'h>;
 
             fn next(&mut self) -> Option<Self::Item> {
-                let Some(captures) = self.captures.peek() else {
+                let Some(matched) = self
+                    .tokenizer
+                    .pattern
+                    .captures_read(&mut self.capture_locs, &self.buffer[self.last_end..])
+                else {
                     if self.last_end < self.buffer.len() {
                         std::hint::cold_path();
-                        let result = Some(
-                            #ident::#case_ident_catchall(
-                                #token_ident_catchall {
-                                    buffer: self.buffer,
-                                    start: self.last_end,
-                                    end: self.buffer.len(),
-                                }
-                            )
+                        let result = #ident::#case_ident_catchall(
+                            #token_ident_catchall {
+                                buffer: self.buffer,
+                                start: self.last_end,
+                                end: self.buffer.len(),
+                            }
                         );
                         self.last_end = self.buffer.len();
-                        return result;
+                        return Some(result);
                     }
                     return None;
                 };
 
-                let matched = captures.get_match();
-                if self.last_end < matched.start() {
+                let offset = self.last_end;
+                if self.last_end < offset + matched.start() {
                     std::hint::cold_path();
-                    let result = Some(
-                        #ident::#case_ident_catchall(
-                            #token_ident_catchall {
-                                buffer: self.buffer,
-                                start: self.last_end,
-                                end: matched.start(),
-                            }
-                        )
+                    let result = #ident::#case_ident_catchall(
+                        #token_ident_catchall {
+                            buffer: self.buffer,
+                            start: self.last_end,
+                            end: offset + matched.start(),
+                        }
                     );
-                    self.last_end = matched.start();
-                    return result;
+                    self.last_end += matched.start();
+                    return Some(result);
                 }
 
-                let captures = self.captures
-                    .next()
-                    .expect("peek operation succeeded. At least one value remained");
-                let matched = captures.get_match();
-                self.last_end = matched.end();
+                self.last_end += matched.end();
                 #(#capture_variants)*
+
                 panic!("must match at least one capture group");
             }
         }

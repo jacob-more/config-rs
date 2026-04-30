@@ -1,5 +1,3 @@
-use std::num::NonZero;
-
 use proc_macro2::TokenStream;
 use quote::quote;
 use syn::{
@@ -154,11 +152,28 @@ impl LexPatterns {
             Self::Patterns(patterns) => patterns
                 .iter()
                 .map(|pat| match pat {
-                    LexExpr::Captures(_, captures) => captures.get(),
+                    LexExpr::Captures(_, captures) => captures.len(),
                     LexExpr::Matches(_) => 0,
                     LexExpr::Constant(_) => 0,
                 })
                 .sum(),
+        }
+    }
+
+    pub fn extra_capture_names(&self) -> Vec<Option<&str>> {
+        match self {
+            Self::Any => Vec::new(),
+            Self::Patterns(patterns) => patterns
+                .iter()
+                .filter_map(|pat| match pat {
+                    LexExpr::Captures(_, captures) => {
+                        Some(captures.iter().map(|s| s.as_ref().map(|s| s.as_str())))
+                    }
+                    LexExpr::Matches(_) => None,
+                    LexExpr::Constant(_) => None,
+                })
+                .flatten()
+                .collect(),
         }
     }
 
@@ -168,7 +183,7 @@ impl LexPatterns {
 }
 
 pub enum LexExpr {
-    Captures(LitStr, NonZero<usize>),
+    Captures(LitStr, Vec<Option<String>>),
     Matches(LitStr),
     Constant(Ident),
 }
@@ -189,7 +204,11 @@ impl Parse for LexExpr {
             if capture_count > 1 {
                 Ok(Self::Captures(
                     pattern,
-                    NonZero::new(capture_count - 1).unwrap(),
+                    pattern_regex
+                        .capture_names()
+                        .skip(1)
+                        .map(|name| name.map(|name| name.to_string()))
+                        .collect(),
                 ))
             } else {
                 Ok(Self::Matches(pattern))

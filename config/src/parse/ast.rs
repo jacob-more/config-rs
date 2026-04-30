@@ -196,19 +196,16 @@ impl AstParser {
     {
         fn capture_string<'a>(string: TokenValue<'a>) -> Bytes {
             match string
-                .captures
-                .name("string")
-                .or_else(|| string.captures.name("qstring"))
-                .map(|matched| string.buffer.slice(matched.range()))
+                .name_bytes("string")
+                .or_else(|| string.name_bytes("qstring"))
                 .or_else(|| {
                     // Replacing escaped characters requires allocating a new
                     // `Bytes` buffer. We'd rather not re-allocate. Hence, why
                     // this is its own capture group.
                     string
-                        .captures
-                        .name("estring")
-                        .or_else(|| string.captures.name("qestring"))
-                        .map(|matched| matched.as_bytes().unescaped().copied().collect())
+                        .name_slice("estring")
+                        .or_else(|| string.name_slice("qestring"))
+                        .map(|matched| matched.unescaped().copied().collect())
                 }) {
                 Some(string) => string,
                 None => {
