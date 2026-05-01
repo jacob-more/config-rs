@@ -3,8 +3,9 @@ use std::{
     ffi::OsStr,
     fmt::{Debug, Display},
     hash::Hash,
-    net::{IpAddr, Ipv4Addr, Ipv6Addr},
-    path::Path, time::Duration,
+    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
+    path::Path,
+    time::Duration,
 };
 
 use bytes::Bytes;
@@ -229,3 +230,6 @@ impl_icval_integer!(f64);
 impl_icval_integer!(IpAddr);
 impl_icval_integer!(Ipv4Addr);
 impl_icval_integer!(Ipv6Addr);
+impl_icval_integer!(SocketAddr);
+impl_icval_integer!(SocketAddrV4);
+impl_icval_integer!(SocketAddrV6);
