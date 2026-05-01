@@ -78,13 +78,11 @@ impl TryFrom<Bytes> for Cval<Duration> {
             };
             match matched_str.parse() {
                 Ok(value) => Ok(value),
-                Err(error) => {
-                    return Err(ParseDurationError::ParseFieldInt(
-                        name,
-                        source.slice_ref(matched.as_bytes()),
-                        error,
-                    ));
-                }
+                Err(error) => Err(ParseDurationError::ParseFieldInt(
+                    name,
+                    source.slice_ref(matched.as_bytes()),
+                    error,
+                )),
             }
         }
 
