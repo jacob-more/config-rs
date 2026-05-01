@@ -4,6 +4,10 @@ use std::{
     fmt::{Debug, Display},
     hash::Hash,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
+    num::{
+        NonZeroI8, NonZeroI16, NonZeroI32, NonZeroI64, NonZeroI128, NonZeroIsize, NonZeroU8,
+        NonZeroU16, NonZeroU32, NonZeroU64, NonZeroU128, NonZeroUsize,
+    },
     path::Path,
     time::Duration,
 };
@@ -223,6 +227,20 @@ impl_icval_integer!(i32);
 impl_icval_integer!(i64);
 impl_icval_integer!(i128);
 impl_icval_integer!(isize);
+
+impl_icval_integer!(NonZeroU8);
+impl_icval_integer!(NonZeroU16);
+impl_icval_integer!(NonZeroU32);
+impl_icval_integer!(NonZeroU64);
+impl_icval_integer!(NonZeroU128);
+impl_icval_integer!(NonZeroUsize);
+
+impl_icval_integer!(NonZeroI8);
+impl_icval_integer!(NonZeroI16);
+impl_icval_integer!(NonZeroI32);
+impl_icval_integer!(NonZeroI64);
+impl_icval_integer!(NonZeroI128);
+impl_icval_integer!(NonZeroIsize);
 
 impl_icval_integer!(f32);
 impl_icval_integer!(f64);
