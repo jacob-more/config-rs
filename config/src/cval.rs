@@ -4,7 +4,7 @@ use std::{
     fmt::{Debug, Display},
     hash::Hash,
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
-    path::Path,
+    path::Path, time::Duration,
 };
 
 use bytes::Bytes;
@@ -13,9 +13,12 @@ use crate::ConfigParseOperationError;
 
 mod bool;
 mod char;
+mod duration;
 mod osstring;
 mod path;
 mod string;
+
+pub(crate) use duration::ParseDurationError;
 
 /// This trait is implemented on types that can be represented by `Cval` and
 /// defines what the internal representation used for that type.
@@ -162,6 +165,7 @@ impl_icval_option!({'a} for &'a OsStr);
 impl_icval_option!({'a} for &'a Path);
 impl_icval_option!(bool);
 impl_icval_option!(char);
+impl_icval_option!(Duration);
 
 macro_rules! impl_icval_integer {
     ($int:ty) => {

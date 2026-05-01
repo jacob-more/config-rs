@@ -80,6 +80,8 @@ enum ReprParseConfigOperationError {
     ParseBoolean,
     #[error("char must be represented by exactly one character")]
     ParseChar,
+    #[error(transparent)]
+    ParseDuration(#[from] ParseDurationError),
 }
 impl From<Infallible> for ReprParseConfigOperationError {
     fn from(value: Infallible) -> Self {
@@ -103,6 +105,7 @@ impl_from_config_parse_error!(std::num::ParseIntError);
 impl_from_config_parse_error!(std::num::ParseFloatError);
 impl_from_config_parse_error!(std::str::Utf8Error);
 impl_from_config_parse_error!(std::net::AddrParseError);
+impl_from_config_parse_error!(ParseDurationError);
 impl From<Infallible> for ConfigParseOperationError {
     fn from(value: Infallible) -> Self {
         match value {}
