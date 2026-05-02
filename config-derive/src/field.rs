@@ -9,7 +9,7 @@ use syn::{
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum FieldType {
     GroupKey,
-    Config,
+    Collection,
     Group,
     AnyGroup,
     Flatten,
@@ -41,7 +41,10 @@ impl WellKnownType {
                 | Self::ConfigAcl => {
                     rev_segments
                         .next()
-                        .is_none_or(|segment| segment.ident == "config")
+                        .is_none_or(|segment| segment.ident == "collections")
+                        && rev_segments
+                            .next()
+                            .is_none_or(|segment| segment.ident == "config")
                         && rev_segments.next().is_none()
                 }
                 Self::Map => {
@@ -140,10 +143,10 @@ impl WellKnownType {
     pub fn parser(&self) -> FieldType {
         match self {
             Self::Key => FieldType::GroupKey,
-            Self::ConfigValue => FieldType::Config,
-            Self::ConfigSet => FieldType::Config,
-            Self::ConfigList => FieldType::Config,
-            Self::ConfigAcl => FieldType::Config,
+            Self::ConfigValue => FieldType::Collection,
+            Self::ConfigSet => FieldType::Collection,
+            Self::ConfigList => FieldType::Collection,
+            Self::ConfigAcl => FieldType::Collection,
             Self::Map => FieldType::AnyGroup,
         }
     }
@@ -229,9 +232,9 @@ impl<'a, 'b> ConfigBytesKey<'a, 'b> {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct OperationDefault<'a, 'b>(&'b ConfigField<'a>);
+pub struct CollectionDefault<'a, 'b>(&'b ConfigField<'a>);
 
-impl<'a, 'b> OperationDefault<'a, 'b> {
+impl<'a, 'b> CollectionDefault<'a, 'b> {
     pub fn ident(&self) -> Ident {
         format_ident!("DEFAULT_{}", self.0.key.literal.to_uppercase())
     }
@@ -352,7 +355,7 @@ impl ConfigFieldAttributes {
             {
                 let parsed = syn::parse2::<Ident>(meta_list.tokens.clone())?;
                 const FIELD_TYPE_MAP: &[(&str, FieldType)] = &[
-                    ("config", FieldType::Config),
+                    ("collection", FieldType::Collection),
                     ("group", FieldType::Group),
                     ("any_group", FieldType::AnyGroup),
                     ("flatten", FieldType::Flatten),
@@ -456,8 +459,8 @@ impl<'a> ConfigField<'a> {
         &self.field.ty
     }
 
-    pub fn default(&self) -> OperationDefault<'a, '_> {
-        OperationDefault(self)
+    pub fn default(&self) -> CollectionDefault<'a, '_> {
+        CollectionDefault(self)
     }
 
     pub fn key_str(&self) -> ConfigStrKey<'a, '_> {

@@ -1,4 +1,4 @@
-use config::{ConfigExt, ConfigValue, Cval};
+use config::{ConfigExt, Cval, collections::ConfigValue};
 use config::{Key, derive};
 
 #[derive(

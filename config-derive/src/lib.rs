@@ -96,7 +96,7 @@ impl<'a> ConfigStruct<'a> {
             fields.push(ConfigField::parse(field, index)?);
         }
         // Ensure all keys are unique within namespaces
-        for namespace in [FieldType::GroupKey, FieldType::Config, FieldType::Group] {
+        for namespace in [FieldType::GroupKey, FieldType::Collection, FieldType::Group] {
             let mut taken_keys = HashMap::with_capacity(fields.len());
             for field in fields.iter().filter(|f| f.field_type() == namespace) {
                 let key = field.key_str().literal().value();
@@ -125,7 +125,7 @@ impl<'a> ConfigStruct<'a> {
         let default_instantiate_statement = self
             .fields
             .iter()
-            .filter(|f| matches!(f.field_type(), FieldType::Config))
+            .filter(|f| matches!(f.field_type(), FieldType::Collection))
             .map(|f| f.default().statement_instantiate());
         let instantiate_field = self.fields.iter().map(|f| match f.field_type() {
             FieldType::GroupKey => match group_key.clone() {
@@ -137,7 +137,7 @@ impl<'a> ConfigStruct<'a> {
                     }
                 }
             },
-            FieldType::Config => f.default().expr_copy_from_ident().to_token_stream(),
+            FieldType::Collection => f.default().expr_copy_from_ident().to_token_stream(),
             FieldType::Group | FieldType::AnyGroup | FieldType::Flatten => {
                 let ty = f.ty();
                 let byte_literal = f.key_bytes().literal();
@@ -198,7 +198,7 @@ impl<'a> ConfigStruct<'a> {
         let configs = self
             .fields
             .iter()
-            .filter(|f| matches!(f.field_type(), FieldType::Config));
+            .filter(|f| matches!(f.field_type(), FieldType::Collection));
 
         let flat_ident = flat_groups.map(|f| f.ident());
 
@@ -224,10 +224,10 @@ impl<'a> ConfigStruct<'a> {
 
         let replay_field = self.fields.iter().filter_map(|f| match f.field_type() {
             FieldType::GroupKey => None,
-            FieldType::Config => {
+            FieldType::Collection => {
                 let ident = f.ident();
                 let tokens = quote! {
-                    ::config::ConfigOperationExt::replay(&mut self.#ident, &other.#ident);
+                    ::config::ConfigCollectionExt::replay(&mut self.#ident, &other.#ident);
                 };
                 Some(tokens)
             }
@@ -309,14 +309,14 @@ impl<'a> ConfigStruct<'a> {
                         },
                         ::config::parse::RawEntry::Operation { key, body } => match ::std::ops::Deref::deref(&key) {
                             #(#config_key_pattern => if let ::std::result::Result::Err(error) =
-                                ::config::ConfigOperationExt::parse_entry(
+                                ::config::ConfigCollectionExt::parse_entry(
                                     &mut self.#config_ident,
                                     ::core::convert::From::from(key),
                                     body
                                 )
                             {
                                 return ::std::result::Result::Err(
-                                    ::config::ConfigParseError::Operation(error)
+                                    ::config::ConfigParseError::Entry(error)
                                 );
                             },)*
                             #ignore_unmatched_keys
@@ -379,7 +379,7 @@ impl<'a> ConfigStruct<'a> {
         let configs = self
             .fields
             .iter()
-            .filter(|f| matches!(f.field_type(), FieldType::Config));
+            .filter(|f| matches!(f.field_type(), FieldType::Collection));
 
         let group_key = group_keys.map(|f| {
             let ident = f.ident();
@@ -412,10 +412,10 @@ impl<'a> ConfigStruct<'a> {
 
         let replay_field = self.fields.iter().filter_map(|f| match f.field_type() {
             FieldType::GroupKey => None,
-            FieldType::Config => {
+            FieldType::Collection => {
                 let ident = f.ident();
                 let tokens = quote! {
-                    ::config::ConfigOperationExt::replay(&mut self.#ident, &other.#ident);
+                    ::config::ConfigCollectionExt::replay(&mut self.#ident, &other.#ident);
                 };
                 Some(tokens)
             }
@@ -521,14 +521,14 @@ impl<'a> ConfigStruct<'a> {
                         },
                         ::config::parse::RawEntry::Operation { key, body } => match ::std::ops::Deref::deref(&key) {
                             #(#config_key_pattern => if let ::std::result::Result::Err(error) =
-                                ::config::ConfigOperationExt::parse_entry(
+                                ::config::ConfigCollectionExt::parse_entry(
                                     &mut self.#config_ident,
                                     ::core::convert::From::from(key),
                                     body
                                 )
                             {
                                 return ::std::result::Result::Err(
-                                    ::config::ConfigParseGroupError::Operation {
+                                    ::config::ConfigParseGroupError::Entry {
                                         group: ::config::derive::Bytes::from(
                                             ::std::clone::Clone::clone(parent_key)
                                         ),
@@ -594,8 +594,8 @@ impl<'a> ConfigStruct<'a> {
                 let ident = f.ident();
                 match f.field_type() {
                     FieldType::GroupKey => None,
-                    FieldType::Config => Some(quote! {
-                        ::config::ConfigOperation::display(
+                    FieldType::Collection => Some(quote! {
+                        ::config::ConfigCollection::display(
                             &self.#ident,
                             ::config::ConfigFmt::next(&fmt),
                         )

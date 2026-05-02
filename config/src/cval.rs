@@ -14,7 +14,7 @@ use std::{
 
 use bytes::Bytes;
 
-use crate::ConfigParseOperationError;
+use crate::ConfigParseEntryError;
 
 mod bool;
 mod char;
@@ -154,7 +154,7 @@ macro_rules! impl_icval_option {
         }
 
         impl TryFrom<Bytes> for Cval<Option<Cval<$ty>>> {
-            type Error = ConfigParseOperationError;
+            type Error = ConfigParseEntryError;
 
             fn try_from(value: Bytes) -> Result<Self, Self::Error> {
                 Ok(Self(Some(<Cval<$ty>>::try_from(value)?)))
@@ -213,7 +213,7 @@ macro_rules! impl_icval_option {
         }
 
         impl TryFrom<Bytes> for Cval<Option<$ty>> {
-            type Error = ConfigParseOperationError;
+            type Error = ConfigParseEntryError;
 
             fn try_from(value: Bytes) -> Result<Self, Self::Error> {
                 Ok(Self(Some(<Cval<$ty>>::try_from(value)?)))
@@ -272,7 +272,7 @@ macro_rules! impl_icval_from_str {
         }
 
         impl TryFrom<Bytes> for Cval<$int> {
-            type Error = ConfigParseOperationError;
+            type Error = ConfigParseEntryError;
 
             fn try_from(value: Bytes) -> Result<Self, Self::Error> {
                 Ok(Self(str::from_utf8(&value)?.parse()?))

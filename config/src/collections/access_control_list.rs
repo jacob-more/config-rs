@@ -1,7 +1,7 @@
 use std::fmt::Display;
 
 use crate::{
-    ConfigFmt, ConfigOperation, Cval, ICval, Key, Operation,
+    ConfigCollection, ConfigFmt, Cval, ICval, Key, Operation,
     header::ConfigHeader,
     parse::{OPERATOR_ADD, OPERATOR_ASSIGN, OPERATOR_CLEAR, OPERATOR_REMOVE},
 };
@@ -81,7 +81,7 @@ where
     }
 }
 
-impl<T> ConfigOperation<T> for ConfigAcl<T>
+impl<T> ConfigCollection<T> for ConfigAcl<T>
 where
     Cval<T>: AsRef<T>,
     T: ?Sized + ICval + PartialEq,

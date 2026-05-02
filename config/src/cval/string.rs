@@ -7,7 +7,7 @@ use std::{
 
 use bytes::Bytes;
 
-use crate::{ConfigParseOperationError, Cval, ICval};
+use crate::{ConfigParseEntryError, Cval, ICval};
 
 impl ICval for str {
     type Repr = Bytes;
@@ -50,7 +50,7 @@ where
 }
 
 impl TryFrom<&[u8]> for Cval<str> {
-    type Error = ConfigParseOperationError;
+    type Error = ConfigParseEntryError;
 
     fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
         // Validates that the underlying bytes are utf8 encoded. Required for
@@ -61,7 +61,7 @@ impl TryFrom<&[u8]> for Cval<str> {
 }
 
 impl TryFrom<Vec<u8>> for Cval<str> {
-    type Error = ConfigParseOperationError;
+    type Error = ConfigParseEntryError;
 
     fn try_from(value: Vec<u8>) -> Result<Self, Self::Error> {
         // try_from(Bytes) validates that the underlying bytes are utf8 encoded.
@@ -71,7 +71,7 @@ impl TryFrom<Vec<u8>> for Cval<str> {
 }
 
 impl TryFrom<Bytes> for Cval<str> {
-    type Error = ConfigParseOperationError;
+    type Error = ConfigParseEntryError;
 
     fn try_from(value: Bytes) -> Result<Self, Self::Error> {
         // Validates that the underlying bytes are utf8 encoded. Required for
@@ -82,7 +82,7 @@ impl TryFrom<Bytes> for Cval<str> {
 }
 
 impl TryFrom<&OsStr> for Cval<str> {
-    type Error = ConfigParseOperationError;
+    type Error = ConfigParseEntryError;
 
     fn try_from(value: &OsStr) -> Result<Self, Self::Error> {
         // try_from(&[u8]) validates that the underlying bytes are utf8 encoded.
@@ -92,7 +92,7 @@ impl TryFrom<&OsStr> for Cval<str> {
 }
 
 impl TryFrom<OsString> for Cval<str> {
-    type Error = ConfigParseOperationError;
+    type Error = ConfigParseEntryError;
 
     fn try_from(value: OsString) -> Result<Self, Self::Error> {
         // try_from(Vec<u8>) validates that the underlying bytes are utf8
@@ -102,7 +102,7 @@ impl TryFrom<OsString> for Cval<str> {
 }
 
 impl TryFrom<Cval<OsStr>> for Cval<str> {
-    type Error = ConfigParseOperationError;
+    type Error = ConfigParseEntryError;
 
     fn try_from(value: Cval<OsStr>) -> Result<Self, Self::Error> {
         // Validates that the underlying bytes are utf8 encoded. Required for
@@ -113,7 +113,7 @@ impl TryFrom<Cval<OsStr>> for Cval<str> {
 }
 
 impl TryFrom<&Path> for Cval<str> {
-    type Error = ConfigParseOperationError;
+    type Error = ConfigParseEntryError;
 
     fn try_from(value: &Path) -> Result<Self, Self::Error> {
         // try_from(&OsStr) validates that the underlying bytes are utf8
@@ -123,7 +123,7 @@ impl TryFrom<&Path> for Cval<str> {
 }
 
 impl TryFrom<PathBuf> for Cval<str> {
-    type Error = ConfigParseOperationError;
+    type Error = ConfigParseEntryError;
 
     fn try_from(value: PathBuf) -> Result<Self, Self::Error> {
         // try_from(&OsString) validates that the underlying bytes are utf8
@@ -133,7 +133,7 @@ impl TryFrom<PathBuf> for Cval<str> {
 }
 
 impl TryFrom<Cval<Path>> for Cval<str> {
-    type Error = ConfigParseOperationError;
+    type Error = ConfigParseEntryError;
 
     fn try_from(value: Cval<Path>) -> Result<Self, Self::Error> {
         // try_from(Cval<OsStr>) validates that the underlying bytes are utf8

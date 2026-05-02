@@ -1,39 +1,40 @@
-use std::{collections::HashSet, fmt::Display, hash::Hash};
+use std::fmt::Display;
 
 use crate::{
-    ConfigFmt, ConfigOperation, Cval, ICval, Key, Operation,
-    header::ConfigHeader,
-    parse::{OPERATOR_ADD, OPERATOR_ASSIGN, OPERATOR_CLEAR},
+    ConfigCollection, ConfigFmt, Cval, ICval, Key, Operation, header::ConfigHeader,
+    parse::OPERATOR_ASSIGN,
 };
 
 #[derive(Debug)]
-pub struct ConfigSet<T: ?Sized + ICval> {
+pub struct ConfigValue<T: ?Sized + ICval> {
     header: ConfigHeader<T>,
-    default: Vec<Cval<T>>,
-    set: HashSet<Cval<T>>,
+    default: Cval<T>,
+    value: Option<Cval<T>>,
 }
 
-impl<T> ConfigSet<T>
+impl<T> ConfigValue<T>
 where
-    Cval<T>: AsRef<T>,
-    T: ?Sized + ICval + Hash + Eq,
+    T: ?Sized + ICval,
 {
-    pub fn new(key: Key) -> Self {
+    pub fn new(key: Key) -> Self
+    where
+        Cval<T>: Default,
+    {
         Self {
             header: ConfigHeader::new(key),
-            set: HashSet::new(),
-            default: Vec::new(),
+            value: None,
+            default: Cval::default(),
         }
     }
 
-    pub fn new_with_default<'x, X>(key: Key, default: &'x [X]) -> Self
+    pub fn new_with_default<X>(key: Key, default: X) -> Self
     where
-        Cval<T>: From<&'x X>,
+        Cval<T>: From<X>,
     {
-        let default: Vec<_> = default.iter().map(Cval::from).collect();
+        let default = Cval::from(default);
         Self {
             header: ConfigHeader::new(key),
-            set: HashSet::from_iter(default.iter().cloned()),
+            value: None,
             default,
         }
     }
@@ -42,37 +43,28 @@ where
         self.header.key()
     }
 
-    pub fn len(&self) -> usize {
-        self.set.len()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.set.is_empty()
-    }
-
-    pub fn values(&self) -> impl Iterator<Item = &Cval<T>> {
-        self.set.iter()
+    pub fn value(&self) -> &Cval<T> {
+        self.value.as_ref().unwrap_or(&self.default)
     }
 }
 
-impl<T> ConfigOperation<T> for ConfigSet<T>
+impl<T> ConfigCollection<T> for ConfigValue<T>
 where
     Cval<T>: AsRef<T>,
-    T: ?Sized + ICval + Hash + Eq,
+    T: ?Sized + ICval + PartialEq,
 {
     fn assign<C: Into<Cval<T>>>(&mut self, value: C) {
         let value = value.into();
         self.header.history_mut().assign(value.clone());
         self.header.set_modified();
-        self.set.clear();
-        self.set.insert(value);
+        self.value = Some(value);
     }
 
     fn assign_if_undefined<C: Into<Cval<T>>>(&mut self, value: C) {
         let value = value.into();
         if !self.is_defined() {
             self.header.set_modified();
-            self.set.insert(value.clone());
+            self.value = Some(value.clone());
         }
         self.header.history_mut().assign_if_undefined(value);
     }
@@ -81,13 +73,14 @@ where
         let value = value.into();
         self.header.history_mut().add(value.clone());
         self.header.set_modified();
-        self.set.insert(value);
+        self.value = Some(value);
     }
 
     fn remove<C: Into<Cval<T>>>(&mut self, value: C) {
         let value = value.into();
-        if self.set.remove(&value) {
-            self.header.set_modified();
+        if self.value.as_ref().is_some_and(|x| x == &value) {
+            self.value = None;
+            self.header.set_default();
         }
         self.header.history_mut().remove(value);
     }
@@ -95,14 +88,13 @@ where
     fn reset(&mut self) {
         self.header.history_mut().reset();
         self.header.set_default();
-        self.set.clear();
-        self.set.extend(self.default.iter().cloned());
+        self.value = None;
     }
 
     fn clear(&mut self) {
         self.header.history_mut().clear();
-        self.header.set_modified();
-        self.set.clear();
+        self.header.set_default();
+        self.value = None;
     }
 
     fn is_default(&self) -> bool {
@@ -110,7 +102,7 @@ where
     }
 
     fn is_defined(&self) -> bool {
-        !self.set.is_empty()
+        self.value.is_some()
     }
 
     fn history<'a>(&'a self) -> impl Iterator<Item = &'a Operation<T>>
@@ -126,22 +118,17 @@ where
     {
         std::fmt::from_fn(move |f| {
             let indent = fmt.indent();
-            let mut values = self.values();
-            match values.next() {
-                Some(first) => {
-                    write!(f, "{indent}{} {OPERATOR_ASSIGN} {first};", self.key())?;
-                    for value in values {
-                        write!(f, "\n{indent}{} {OPERATOR_ADD} {value};", self.key())?;
-                    }
-                    Ok(())
-                }
-                None => write!(f, "{indent}{} {OPERATOR_CLEAR};", self.key()),
-            }
+            write!(
+                f,
+                "{indent}{} {OPERATOR_ASSIGN} {};",
+                self.key(),
+                self.value()
+            )
         })
     }
 }
 
-impl<T> Clone for ConfigSet<T>
+impl<T> Clone for ConfigValue<T>
 where
     T: ?Sized + ICval,
 {
@@ -149,15 +136,15 @@ where
         Self {
             header: self.header.clone(),
             default: self.default.clone(),
-            set: self.set.clone(),
+            value: self.value.clone(),
         }
     }
 }
 
-impl<T> Display for ConfigSet<T>
+impl<T> Display for ConfigValue<T>
 where
     Cval<T>: AsRef<T> + Display,
-    T: ?Sized + ICval + Hash + Eq,
+    T: ?Sized + ICval + PartialEq,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.display(ConfigFmt::new()))

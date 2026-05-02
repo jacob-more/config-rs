@@ -11,7 +11,7 @@ use std::{
 use bytes::Bytes;
 use thiserror::Error;
 
-use crate::{ConfigParseOperationError, Cval, ICval};
+use crate::{ConfigParseEntryError, Cval, ICval};
 
 #[derive(Debug, Error)]
 pub(crate) enum ParseDurationError {
@@ -61,7 +61,7 @@ impl AsRef<Duration> for Cval<Duration> {
 }
 
 impl TryFrom<Bytes> for Cval<Duration> {
-    type Error = ConfigParseOperationError;
+    type Error = ConfigParseEntryError;
 
     fn try_from(value: Bytes) -> Result<Self, Self::Error> {
         fn parse_field<'h, R>(
@@ -215,7 +215,7 @@ mod test {
     use bytes::Bytes;
     use rstest::rstest;
 
-    use crate::{Cval, ParseDurationError, ReprParseConfigOperationError};
+    use crate::{Cval, ParseDurationError, ReprParseConfigEntryError};
 
     #[rstest]
     #[case("0", Duration::new(0, 0))]
@@ -277,7 +277,7 @@ mod test {
         assert!(parse_result.is_err());
         assert!(matches!(
             *parse_result.unwrap_err().0,
-            ReprParseConfigOperationError::ParseDuration(ParseDurationError::Format)
+            ReprParseConfigEntryError::ParseDuration(ParseDurationError::Format)
         ));
     }
 
@@ -296,7 +296,7 @@ mod test {
         assert!(parse_result.is_err());
         assert!(matches!(
             *parse_result.unwrap_err().0,
-            ReprParseConfigOperationError::ParseDuration(ParseDurationError::ParseFieldInt(..))
+            ReprParseConfigEntryError::ParseDuration(ParseDurationError::ParseFieldInt(..))
         ));
     }
 
@@ -315,7 +315,7 @@ mod test {
         assert!(parse_result.is_err());
         assert!(matches!(
             *parse_result.unwrap_err().0,
-            ReprParseConfigOperationError::ParseDuration(ParseDurationError::FieldOverflows(..))
+            ReprParseConfigEntryError::ParseDuration(ParseDurationError::FieldOverflows(..))
         ));
     }
 }

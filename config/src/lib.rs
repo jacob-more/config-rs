@@ -12,25 +12,16 @@ use thiserror::Error;
 pub mod ext;
 pub mod parse;
 
+pub mod collections;
 mod cval;
 mod fmt;
 pub(crate) mod header;
 pub(crate) mod history;
 mod key;
 
-mod access_control_list;
-mod list;
-mod set;
-mod value;
-
 pub use cval::*;
 pub use fmt::*;
 pub use key::*;
-
-pub use access_control_list::*;
-pub use list::*;
-pub use set::*;
-pub use value::*;
 
 pub mod derive {
     pub use bytes::Bytes;
@@ -67,7 +58,7 @@ where
 }
 
 #[derive(Debug, Error)]
-enum ReprParseConfigOperationError {
+enum ReprParseConfigEntryError {
     #[error(transparent)]
     ParseInteger(#[from] std::num::ParseIntError),
     #[error(transparent)]
@@ -83,7 +74,7 @@ enum ReprParseConfigOperationError {
     #[error(transparent)]
     ParseDuration(#[from] ParseDurationError),
 }
-impl From<Infallible> for ReprParseConfigOperationError {
+impl From<Infallible> for ReprParseConfigEntryError {
     fn from(value: Infallible) -> Self {
         match value {}
     }
@@ -91,12 +82,12 @@ impl From<Infallible> for ReprParseConfigOperationError {
 
 #[derive(Debug, Error)]
 #[error(transparent)]
-pub struct ConfigParseOperationError(#[from] Box<ReprParseConfigOperationError>);
+pub struct ConfigParseEntryError(#[from] Box<ReprParseConfigEntryError>);
 macro_rules! impl_from_config_parse_error {
     ($ty:ty) => {
-        impl From<$ty> for ConfigParseOperationError {
+        impl From<$ty> for ConfigParseEntryError {
             fn from(value: $ty) -> Self {
-                ConfigParseOperationError(Box::new(ReprParseConfigOperationError::from(value)))
+                ConfigParseEntryError(Box::new(ReprParseConfigEntryError::from(value)))
             }
         }
     };
@@ -106,7 +97,7 @@ impl_from_config_parse_error!(std::num::ParseFloatError);
 impl_from_config_parse_error!(std::str::Utf8Error);
 impl_from_config_parse_error!(std::net::AddrParseError);
 impl_from_config_parse_error!(ParseDurationError);
-impl From<Infallible> for ConfigParseOperationError {
+impl From<Infallible> for ConfigParseEntryError {
     fn from(value: Infallible) -> Self {
         match value {}
     }
@@ -123,7 +114,7 @@ pub enum ConfigParseError {
     #[error(transparent)]
     Group(#[from] ConfigParseGroupError),
     #[error(transparent)]
-    Operation(#[from] ConfigParseOperationError),
+    Entry(#[from] ConfigParseEntryError),
 }
 impl From<Infallible> for ConfigParseError {
     fn from(value: Infallible) -> Self {
@@ -145,9 +136,9 @@ pub enum ConfigParseGroupError {
         error: Box<ConfigParseGroupError>,
     },
     #[error("error in group {}: {error}", OsStr::from_bytes(.group).display())]
-    Operation {
+    Entry {
         group: Bytes,
-        error: ConfigParseOperationError,
+        error: ConfigParseEntryError,
     },
 }
 impl From<Infallible> for ConfigParseGroupError {
@@ -301,7 +292,7 @@ pub trait ConfigGroup {
     fn display(&self, fmt: ConfigFmt) -> impl Display;
 }
 
-pub trait ConfigOperation<T>
+pub trait ConfigCollection<T>
 where
     T: ?Sized + ICval,
 {
@@ -322,17 +313,13 @@ where
         Cval<T>: Display;
 }
 
-pub trait ConfigOperationExt<T, E>: ConfigOperation<T>
+pub trait ConfigCollectionExt<T, E>: ConfigCollection<T>
 where
     T: ?Sized + ICval,
     Cval<T>: TryFrom<bytes::Bytes, Error = E>,
-    ConfigParseOperationError: From<E>,
+    ConfigParseEntryError: From<E>,
 {
-    fn parse_entry(
-        &mut self,
-        key: Key,
-        body: RawOperation,
-    ) -> Result<(), ConfigParseOperationError> {
+    fn parse_entry(&mut self, key: Key, body: RawOperation) -> Result<(), ConfigParseEntryError> {
         let _ = key; // key is unused here, but required for the trait.
 
         match body.0 {
@@ -363,12 +350,12 @@ where
         other.history().cloned().for_each(|event| self.apply(event));
     }
 }
-impl<C, T, E> ConfigOperationExt<T, E> for C
+impl<C, T, E> ConfigCollectionExt<T, E> for C
 where
-    C: ConfigOperation<T>,
+    C: ConfigCollection<T>,
     T: ?Sized + ICval,
     Cval<T>: TryFrom<bytes::Bytes, Error = E>,
-    ConfigParseOperationError: From<E>,
+    ConfigParseEntryError: From<E>,
 {
 }
 

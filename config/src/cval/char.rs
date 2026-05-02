@@ -2,7 +2,7 @@ use std::fmt::Display;
 
 use bytes::Bytes;
 
-use crate::{ConfigParseOperationError, Cval, ICval, ReprParseConfigOperationError};
+use crate::{ConfigParseEntryError, Cval, ICval, ReprParseConfigEntryError};
 
 impl ICval for char {
     type Repr = Self;
@@ -21,14 +21,14 @@ impl AsRef<char> for Cval<char> {
 }
 
 impl TryFrom<Bytes> for Cval<char> {
-    type Error = ConfigParseOperationError;
+    type Error = ConfigParseEntryError;
 
     fn try_from(value: Bytes) -> Result<Self, Self::Error> {
         let value = str::from_utf8(&value)?;
         match (value.chars().next(), value.chars().next()) {
             (Some(character), None) => Ok(Self(character)),
-            (_, _) => Err(ConfigParseOperationError(Box::new(
-                ReprParseConfigOperationError::ParseChar,
+            (_, _) => Err(ConfigParseEntryError(Box::new(
+                ReprParseConfigEntryError::ParseChar,
             ))),
         }
     }

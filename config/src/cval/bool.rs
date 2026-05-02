@@ -2,7 +2,7 @@ use std::fmt::Display;
 
 use bytes::Bytes;
 
-use crate::{ConfigParseOperationError, Cval, ICval, ReprParseConfigOperationError};
+use crate::{ConfigParseEntryError, Cval, ICval, ReprParseConfigEntryError};
 
 const BOOLEAN_TRUE: &[&[u8]] = &[b"true", b"enable", b"yes", b"t", b"y"];
 const BOOLEAN_FALSE: &[&[u8]] = &[b"false", b"disable", b"no", b"f", b"n"];
@@ -24,7 +24,7 @@ impl AsRef<bool> for Cval<bool> {
 }
 
 impl TryFrom<Bytes> for Cval<bool> {
-    type Error = ConfigParseOperationError;
+    type Error = ConfigParseEntryError;
 
     fn try_from(value: Bytes) -> Result<Self, Self::Error> {
         if BOOLEAN_TRUE.iter().any(|x| x.eq_ignore_ascii_case(&value)) {
@@ -32,8 +32,8 @@ impl TryFrom<Bytes> for Cval<bool> {
         } else if BOOLEAN_FALSE.iter().any(|x| x.eq_ignore_ascii_case(&value)) {
             Ok(Self(false))
         } else {
-            Err(ConfigParseOperationError(Box::new(
-                ReprParseConfigOperationError::ParseBoolean,
+            Err(ConfigParseEntryError(Box::new(
+                ReprParseConfigEntryError::ParseBoolean,
             )))
         }
     }
