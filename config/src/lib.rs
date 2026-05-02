@@ -1,5 +1,4 @@
 use std::{
-    collections::HashMap,
     convert::Infallible,
     ffi::OsStr,
     fmt::{Debug, Display},
@@ -15,6 +14,7 @@ pub mod parse;
 pub mod collections;
 mod cval;
 mod fmt;
+mod groups;
 pub(crate) mod header;
 pub(crate) mod history;
 mod key;
@@ -28,10 +28,7 @@ pub mod derive {
     pub use config_derive::*;
 }
 
-use crate::{
-    ext::IterJoin,
-    parse::{AstOperation, ParseError, Parser, RawEntry, RawGroup, RawOperation},
-};
+use crate::parse::{AstOperation, ParseError, Parser, RawEntry, RawGroup, RawOperation};
 #[derive(Debug)]
 pub enum Operation<T: ?Sized + ICval> {
     Assign(Cval<T>),
@@ -357,112 +354,6 @@ where
     Cval<T>: TryFrom<bytes::Bytes, Error = E>,
     ConfigParseEntryError: From<E>,
 {
-}
-
-impl<C> Config for HashMap<Key, C>
-where
-    C: ConfigGroup<Err = ConfigParseError>,
-{
-    type Err = ConfigParseError;
-
-    fn parse_entry(&mut self, entry: RawEntry) -> Result<(), Self::Err> {
-        match entry {
-            RawEntry::Group { key, body } => {
-                let key = Key::from(key);
-                self.entry(key.clone())
-                    .or_insert_with(|| ConfigGroup::new(key.clone()))
-                    .parse_group(key, body)?;
-            }
-            RawEntry::Operation { key, body } => {
-                return Err(ConfigParseError::UnknownOperationKey(RawEntry::Operation {
-                    key,
-                    body,
-                }));
-            }
-        }
-        Ok(())
-    }
-
-    fn replay(&mut self, other: &Self) {
-        for (key, group) in other.iter() {
-            self.entry(key.clone())
-                .or_insert_with(|| ConfigGroup::new(key.clone()))
-                .replay(group);
-        }
-    }
-
-    fn display(&self, fmt: ConfigFmt) -> impl Display {
-        std::fmt::from_fn(move |f| {
-            write!(
-                f,
-                "{}",
-                self.values()
-                    .map(|group| group.display(fmt.clone()))
-                    .join('\n')
-            )
-        })
-    }
-}
-
-impl<C> ConfigGroup for HashMap<Key, C>
-where
-    C: ConfigGroup<Err = ConfigParseGroupError>,
-{
-    type Err = ConfigParseGroupError;
-
-    fn new(_key: Key) -> Self {
-        Self::default()
-    }
-
-    fn parse_group(&mut self, key: Key, body: RawGroup) -> Result<(), Self::Err> {
-        self.parse_entry(
-            &key,
-            RawEntry::Group {
-                key: key.clone().into_bytes(),
-                body,
-            },
-        )
-    }
-
-    fn parse_entry(&mut self, key: &Key, entry: RawEntry) -> Result<(), Self::Err> {
-        let parent_group = key;
-
-        match entry {
-            RawEntry::Group { key, body } => {
-                let key = Key::from(key);
-                self.entry(key.clone())
-                    .or_insert_with(|| ConfigGroup::new(key.clone()))
-                    .parse_group(key, body)?;
-            }
-            RawEntry::Operation { key, body } => {
-                return Err(ConfigParseGroupError::UnknownOperationKey {
-                    group: parent_group.clone().into_bytes(),
-                    entry: RawEntry::Operation { key, body },
-                });
-            }
-        }
-        Ok(())
-    }
-
-    fn replay(&mut self, other: &Self) {
-        for (key, group) in other.iter() {
-            self.entry(key.clone())
-                .or_insert_with(|| ConfigGroup::new(key.clone()))
-                .replay(group);
-        }
-    }
-
-    fn display(&self, fmt: ConfigFmt) -> impl Display {
-        std::fmt::from_fn(move |f| {
-            write!(
-                f,
-                "{}",
-                self.values()
-                    .map(|group| group.display(fmt.clone()))
-                    .join('\n')
-            )
-        })
-    }
 }
 
 #[cfg(test)]
