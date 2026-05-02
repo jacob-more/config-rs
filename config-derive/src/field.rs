@@ -118,6 +118,7 @@ impl WellKnownType {
             ("ConfigList", WellKnownType::ConfigList),
             ("ConfigAcl", WellKnownType::ConfigAcl),
             ("HashMap", WellKnownType::Map),
+            ("BTreeMap", WellKnownType::Map),
         ];
         let Type::Path(TypePath { qself: None, path }) = &ty else {
             return None;
