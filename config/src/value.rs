@@ -6,7 +6,7 @@ use crate::{
 };
 
 #[derive(Debug)]
-pub struct ConfigValue<T: ICval> {
+pub struct ConfigValue<T: ?Sized + ICval> {
     header: ConfigHeader<T>,
     default: Cval<T>,
     value: Option<Cval<T>>,
@@ -14,17 +14,16 @@ pub struct ConfigValue<T: ICval> {
 
 impl<T> ConfigValue<T>
 where
-    T: ICval,
+    T: ?Sized + ICval,
 {
     pub fn new(key: Key) -> Self
     where
-        T: Default,
-        Cval<T>: From<T>,
+        Cval<T>: Default,
     {
         Self {
             header: ConfigHeader::new(key),
             value: None,
-            default: Cval::from(T::default()),
+            default: Cval::default(),
         }
     }
 
@@ -51,8 +50,8 @@ where
 
 impl<T> ConfigOperation<T> for ConfigValue<T>
 where
-    T: ICval,
-    T::Repr: PartialEq,
+    Cval<T>: AsRef<T>,
+    T: ?Sized + ICval + PartialEq,
 {
     fn assign<C: Into<Cval<T>>>(&mut self, value: C) {
         let value = value.into();
@@ -131,7 +130,7 @@ where
 
 impl<T> Clone for ConfigValue<T>
 where
-    T: ICval,
+    T: ?Sized + ICval,
 {
     fn clone(&self) -> Self {
         Self {
@@ -144,9 +143,8 @@ where
 
 impl<T> Display for ConfigValue<T>
 where
-    T: ICval,
-    Cval<T>: Display,
-    T::Repr: PartialEq,
+    Cval<T>: AsRef<T> + Display,
+    T: ?Sized + ICval + PartialEq,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.display(ConfigFmt::new()))

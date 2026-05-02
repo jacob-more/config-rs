@@ -9,12 +9,12 @@ use bytes::Bytes;
 
 use crate::{Cval, ICval};
 
-impl ICval for &OsStr {
+impl ICval for OsStr {
     type Repr = Bytes;
 }
 
 #[cfg(unix)]
-impl Cval<&OsStr> {
+impl Cval<OsStr> {
     pub(crate) const fn from_static(bytes: &'static [u8]) -> Self {
         // On Unix-like systems, this upholds the safety guarantees for the
         // underlying encoding
@@ -22,7 +22,13 @@ impl Cval<&OsStr> {
     }
 }
 
-impl Deref for Cval<&OsStr> {
+impl Default for Cval<OsStr> {
+    fn default() -> Self {
+        Self(Bytes::new())
+    }
+}
+
+impl Deref for Cval<OsStr> {
     type Target = OsStr;
 
     fn deref(&self) -> &Self::Target {
@@ -46,13 +52,13 @@ impl Deref for Cval<&OsStr> {
     }
 }
 
-impl AsRef<OsStr> for Cval<&OsStr> {
+impl AsRef<OsStr> for Cval<OsStr> {
     fn as_ref(&self) -> &OsStr {
         self.deref()
     }
 }
 
-impl<T> AsRef<T> for Cval<&OsStr>
+impl<T> AsRef<T> for Cval<OsStr>
 where
     for<'a> OsStr: AsRef<T>,
 {
@@ -61,14 +67,14 @@ where
     }
 }
 
-impl From<&[u8]> for Cval<&OsStr> {
+impl From<&[u8]> for Cval<OsStr> {
     fn from(value: &[u8]) -> Self {
         Self::from(value.to_vec())
     }
 }
 
 #[cfg(unix)]
-impl From<Vec<u8>> for Cval<&OsStr> {
+impl From<Vec<u8>> for Cval<OsStr> {
     fn from(value: Vec<u8>) -> Self {
         use std::os::unix::ffi::OsStringExt;
 
@@ -79,7 +85,7 @@ impl From<Vec<u8>> for Cval<&OsStr> {
 }
 
 #[cfg(unix)]
-impl From<Bytes> for Cval<&OsStr> {
+impl From<Bytes> for Cval<OsStr> {
     fn from(value: Bytes) -> Self {
         // On Unix-like systems, this upholds the safety guarantees for the
         // underlying encoding
@@ -87,13 +93,13 @@ impl From<Bytes> for Cval<&OsStr> {
     }
 }
 
-impl From<&OsStr> for Cval<&OsStr> {
+impl From<&OsStr> for Cval<OsStr> {
     fn from(value: &OsStr) -> Self {
         Self::from(value.to_os_string())
     }
 }
 
-impl From<OsString> for Cval<&OsStr> {
+impl From<OsString> for Cval<OsStr> {
     fn from(value: OsString) -> Self {
         // This upholds the safety guarantees for the underlying encoding on all
         // platforms
@@ -101,45 +107,45 @@ impl From<OsString> for Cval<&OsStr> {
     }
 }
 
-impl From<&str> for Cval<&OsStr> {
+impl From<&str> for Cval<OsStr> {
     fn from(value: &str) -> Self {
         Self::from(OsStr::new(value))
     }
 }
 
-impl From<String> for Cval<&OsStr> {
+impl From<String> for Cval<OsStr> {
     fn from(value: String) -> Self {
         Self::from(OsString::from(value))
     }
 }
 
-impl From<Cval<&str>> for Cval<&OsStr> {
-    fn from(value: Cval<&str>) -> Self {
+impl From<Cval<str>> for Cval<OsStr> {
+    fn from(value: Cval<str>) -> Self {
         // This upholds the safety guarantees for the underlying encoding on all
         // platforms because OsStr encoding is a superset of UTF-8.
         Self(value.into_inner())
     }
 }
 
-impl From<&Path> for Cval<&OsStr> {
+impl From<&Path> for Cval<OsStr> {
     fn from(value: &Path) -> Self {
         Self::from(value.as_os_str())
     }
 }
 
-impl From<PathBuf> for Cval<&OsStr> {
+impl From<PathBuf> for Cval<OsStr> {
     fn from(value: PathBuf) -> Self {
         Self::from(OsString::from(value))
     }
 }
 
-impl<'a> From<Cval<&'a Path>> for Cval<&'a OsStr> {
-    fn from(value: Cval<&'a Path>) -> Self {
+impl From<Cval<Path>> for Cval<OsStr> {
+    fn from(value: Cval<Path>) -> Self {
         value.into_inner()
     }
 }
 
-impl Display for Cval<&OsStr> {
+impl Display for Cval<OsStr> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.deref().display())
     }

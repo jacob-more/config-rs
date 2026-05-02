@@ -11,6 +11,12 @@ impl ICval for bool {
     type Repr = Self;
 }
 
+impl Default for Cval<bool> {
+    fn default() -> Self {
+        Self(bool::default())
+    }
+}
+
 impl AsRef<bool> for Cval<bool> {
     fn as_ref(&self) -> &bool {
         &self.0

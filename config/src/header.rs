@@ -1,7 +1,7 @@
 use crate::{ICval, Key, history::History};
 
 #[derive(Debug)]
-pub struct ConfigHeader<T: ICval> {
+pub struct ConfigHeader<T: ?Sized + ICval> {
     key: Key,
     history: History<T>,
     is_default: bool,
@@ -9,7 +9,7 @@ pub struct ConfigHeader<T: ICval> {
 
 impl<T> ConfigHeader<T>
 where
-    T: ICval,
+    T: ?Sized + ICval,
 {
     pub const fn new(key: Key) -> Self {
         Self {
@@ -46,7 +46,7 @@ where
 
 impl<T> Clone for ConfigHeader<T>
 where
-    T: ICval,
+    T: ?Sized + ICval,
 {
     fn clone(&self) -> Self {
         Self {

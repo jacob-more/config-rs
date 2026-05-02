@@ -1,13 +1,13 @@
 use crate::{Cval, ICval, Operation};
 
 #[derive(Debug)]
-pub struct History<T: ICval> {
+pub struct History<T: ?Sized + ICval> {
     history: Vec<Operation<T>>,
 }
 
 impl<T> History<T>
 where
-    T: ICval,
+    T: ?Sized + ICval,
 {
     pub const fn new() -> Self {
         Self {
@@ -52,7 +52,7 @@ where
 
 impl<T> Default for History<T>
 where
-    T: ICval,
+    T: ?Sized + ICval,
 {
     fn default() -> Self {
         Self::new()
@@ -61,7 +61,7 @@ where
 
 impl<T> Clone for History<T>
 where
-    T: ICval,
+    T: ?Sized + ICval,
 {
     fn clone(&self) -> Self {
         Self {

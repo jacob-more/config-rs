@@ -13,7 +13,7 @@ pub enum AclAction {
 }
 
 #[derive(Debug)]
-pub struct ConfigAcl<T: ICval> {
+pub struct ConfigAcl<T: ?Sized + ICval> {
     header: ConfigHeader<T>,
     default: Vec<(AclAction, Cval<T>)>,
     acl: Vec<(AclAction, Cval<T>)>,
@@ -21,7 +21,7 @@ pub struct ConfigAcl<T: ICval> {
 
 impl<T> ConfigAcl<T>
 where
-    T: ICval,
+    T: ?Sized + ICval,
 {
     pub const fn new(key: Key) -> Self {
         Self {
@@ -83,8 +83,8 @@ where
 
 impl<T> ConfigOperation<T> for ConfigAcl<T>
 where
-    T: ICval,
-    T::Repr: PartialEq,
+    Cval<T>: AsRef<T>,
+    T: ?Sized + ICval + PartialEq,
 {
     fn assign<C: Into<Cval<T>>>(&mut self, value: C) {
         let value = value.into();
@@ -186,7 +186,7 @@ where
 
 impl<T> Clone for ConfigAcl<T>
 where
-    T: ICval,
+    T: ?Sized + ICval,
 {
     fn clone(&self) -> Self {
         Self {
@@ -199,9 +199,8 @@ where
 
 impl<T> Display for ConfigAcl<T>
 where
-    Cval<T>: Display,
-    T: ICval,
-    T::Repr: PartialEq,
+    Cval<T>: AsRef<T> + Display,
+    T: ?Sized + ICval + PartialEq,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.display(ConfigFmt::new()))

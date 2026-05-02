@@ -11,7 +11,7 @@ use bytes::Bytes;
 use crate::Cval;
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct Key(Cval<&'static OsStr>);
+pub struct Key(Cval<OsStr>);
 
 impl Key {
     pub const fn from_static(string: &'static [u8]) -> Self {
@@ -89,6 +89,12 @@ impl From<OsString> for Key {
     }
 }
 
+impl From<Cval<OsStr>> for Key {
+    fn from(value: Cval<OsStr>) -> Self {
+        Self(value)
+    }
+}
+
 impl From<&str> for Key {
     fn from(value: &str) -> Self {
         Self(Cval::from(value))
@@ -101,8 +107,8 @@ impl From<String> for Key {
     }
 }
 
-impl From<Cval<&str>> for Key {
-    fn from(value: Cval<&str>) -> Self {
+impl From<Cval<str>> for Key {
+    fn from(value: Cval<str>) -> Self {
         Self(Cval::from(value))
     }
 }
@@ -119,8 +125,8 @@ impl From<PathBuf> for Key {
     }
 }
 
-impl From<Cval<&'static Path>> for Key {
-    fn from(value: Cval<&'static Path>) -> Self {
+impl From<Cval<Path>> for Key {
+    fn from(value: Cval<Path>) -> Self {
         Self(Cval::from(value))
     }
 }

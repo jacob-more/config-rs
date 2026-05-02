@@ -1,5 +1,4 @@
-use config::derive;
-use config::{ConfigExt, ConfigValue};
+use config::{ConfigExt, ConfigValue, Cval};
 use config::{Key, derive};
 
 #[derive(
@@ -9,16 +8,16 @@ use config::{Key, derive};
 pub struct Locale {
     #[key("LOCALE")]
     pub group_key: Key,
-    pub lang: ConfigValue<Option<&'static str>>,
-    pub lc_address: ConfigValue<Option<&'static str>>,
-    pub lc_identification: ConfigValue<Option<&'static str>>,
-    pub lc_measurement: ConfigValue<Option<&'static str>>,
-    pub lc_monetary: ConfigValue<Option<&'static str>>,
-    pub lc_name: ConfigValue<Option<&'static str>>,
-    pub lc_numeric: ConfigValue<Option<&'static str>>,
-    pub lc_paper: ConfigValue<Option<&'static str>>,
-    pub lc_telephone: ConfigValue<Option<&'static str>>,
-    pub lc_time: ConfigValue<Option<&'static str>>,
+    pub lang: ConfigValue<Option<Cval<str>>>,
+    pub lc_address: ConfigValue<Option<Cval<str>>>,
+    pub lc_identification: ConfigValue<Option<Cval<str>>>,
+    pub lc_measurement: ConfigValue<Option<Cval<str>>>,
+    pub lc_monetary: ConfigValue<Option<Cval<str>>>,
+    pub lc_name: ConfigValue<Option<Cval<str>>>,
+    pub lc_numeric: ConfigValue<Option<Cval<str>>>,
+    pub lc_paper: ConfigValue<Option<Cval<str>>>,
+    pub lc_telephone: ConfigValue<Option<Cval<str>>>,
+    pub lc_time: ConfigValue<Option<Cval<str>>>,
 }
 
 #[derive(
@@ -27,19 +26,21 @@ pub struct Locale {
 pub struct OsRelease {
     #[key("OS_RELEASE")]
     pub group_key: Key,
-    pub name: ConfigValue<Option<&'static str>>,
-    pub id: ConfigValue<Option<&'static str>>,
-    pub id_like: ConfigValue<Option<&'static str>>,
-    pub pretty_name: ConfigValue<Option<&'static str>>,
-    pub ansi_color: ConfigValue<Option<&'static str>>,
-    pub home_url: ConfigValue<Option<&'static str>>,
-    pub documentation_url: ConfigValue<Option<&'static str>>,
-    pub support_url: ConfigValue<Option<&'static str>>,
-    pub bug_report_url: ConfigValue<Option<&'static str>>,
-    pub privacy_policy_url: ConfigValue<Option<&'static str>>,
+    pub name: ConfigValue<Option<Cval<str>>>,
+    pub id: ConfigValue<Option<Cval<str>>>,
+    pub id_like: ConfigValue<Option<Cval<str>>>,
+    pub pretty_name: ConfigValue<Option<Cval<str>>>,
+    pub ansi_color: ConfigValue<Option<Cval<str>>>,
+    pub home_url: ConfigValue<Option<Cval<str>>>,
+    pub documentation_url: ConfigValue<Option<Cval<str>>>,
+    pub support_url: ConfigValue<Option<Cval<str>>>,
+    pub bug_report_url: ConfigValue<Option<Cval<str>>>,
+    pub privacy_policy_url: ConfigValue<Option<Cval<str>>>,
 }
 
-#[derive(Debug, Clone, derive::Config, derive::ConfigDefault, derive::ConfigDisplay)]
+#[derive(
+    Debug, Clone, derive::Config, derive::ConfigGroup, derive::ConfigDefault, derive::ConfigDisplay,
+)]
 pub struct SystemInfo {
     pub os_release: OsRelease,
     pub locale: Locale,

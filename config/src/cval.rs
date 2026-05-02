@@ -34,12 +34,20 @@ pub trait ICval {
 /// A type used to represent a single value in configurations. It should be
 /// cheaply cloneable and might be reference counted if it requires heap
 /// allocation.
-#[derive(Debug)]
-pub struct Cval<T: ICval>(T::Repr);
+pub struct Cval<T: ?Sized + ICval>(T::Repr);
+
+impl<T> Debug for Cval<T>
+where
+    T: ?Sized + ICval,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("Cval").field(&self.0).finish()
+    }
+}
 
 impl<T> Cval<T>
 where
-    T: ICval,
+    T: ?Sized + ICval,
 {
     pub(crate) fn into_inner(self) -> T::Repr {
         self.0
@@ -48,7 +56,7 @@ where
 
 impl<T> Clone for Cval<T>
 where
-    T: ICval,
+    T: ?Sized + ICval,
 {
     fn clone(&self) -> Self {
         Self(self.0.clone())
@@ -58,7 +66,7 @@ where
 impl<T> Borrow<T> for Cval<T>
 where
     Self: AsRef<T>,
-    T: ICval,
+    T: ?Sized + ICval,
 {
     fn borrow(&self) -> &T {
         self.as_ref()
@@ -67,53 +75,53 @@ where
 
 impl<T> PartialEq for Cval<T>
 where
-    T: ICval,
-    T::Repr: PartialEq,
+    Self: AsRef<T>,
+    T: ?Sized + ICval + PartialEq,
 {
     fn eq(&self, other: &Self) -> bool {
-        self.0.eq(&other.0)
+        self.as_ref().eq(other.as_ref())
     }
 }
 impl<T> Eq for Cval<T>
 where
-    T: ICval,
-    T::Repr: Eq,
+    Self: AsRef<T>,
+    T: ?Sized + ICval + Eq,
 {
 }
 
 impl<T> PartialOrd for Cval<T>
 where
-    T: ICval,
-    T::Repr: PartialOrd,
+    Self: AsRef<T>,
+    T: ?Sized + ICval + PartialOrd,
 {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        self.0.partial_cmp(&other.0)
+        self.as_ref().partial_cmp(other.as_ref())
     }
 }
 impl<T> Ord for Cval<T>
 where
-    T: ICval,
-    T::Repr: Ord,
+    Self: AsRef<T>,
+    T: ?Sized + ICval + Ord,
 {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.0.cmp(&other.0)
+        self.as_ref().cmp(other.as_ref())
     }
 }
 
 impl<T> Hash for Cval<T>
 where
-    T: ICval,
-    T::Repr: Hash,
+    Self: AsRef<T>,
+    T: ?Sized + ICval + Hash,
 {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.0.hash(state);
+        self.as_ref().hash(state);
     }
 }
 
 impl<'a, 'b, A, B> From<&'b mut A> for Cval<B>
 where
     Cval<B>: From<&'a A>,
-    B: ICval,
+    B: ?Sized + ICval,
     'b: 'a,
 {
     fn from(value: &'b mut A) -> Self {
@@ -122,18 +130,30 @@ where
 }
 
 macro_rules! impl_icval_option {
-    ($({$lifetime:tt} for)? $ty:ty) => {
-        impl$(<$lifetime>)? ICval for Option<$ty> {
+    (Cval<$ty:ty>) => {
+        impl ICval for Option<Cval<$ty>> {
             type Repr = Option<Cval<$ty>>;
         }
 
-        impl$(<$lifetime>)? Cval<Option<$ty>> {
+        impl Default for Cval<Option<Cval<$ty>>> {
+            fn default() -> Self {
+                Self(None)
+            }
+        }
+
+        impl Cval<Option<Cval<$ty>>> {
             pub fn as_ref(&self) -> Option<&Cval<$ty>> {
                 self.0.as_ref()
             }
         }
 
-        impl$(<$lifetime>)? TryFrom<Bytes> for Cval<Option<$ty>> {
+        impl AsRef<Option<Cval<$ty>>> for Cval<Option<Cval<$ty>>> {
+            fn as_ref(&self) -> &Option<Cval<$ty>> {
+                &self.0
+            }
+        }
+
+        impl TryFrom<Bytes> for Cval<Option<Cval<$ty>>> {
             type Error = ConfigParseOperationError;
 
             fn try_from(value: Bytes) -> Result<Self, Self::Error> {
@@ -141,19 +161,78 @@ macro_rules! impl_icval_option {
             }
         }
 
-        impl$(<$lifetime>)? From<$ty> for Cval<Option<$ty>> {
+        impl From<&$ty> for Cval<Option<Cval<$ty>>> {
+            fn from(value: &$ty) -> Self {
+                Self(Some(Cval::from(value)))
+            }
+        }
+
+        impl From<Option<&$ty>> for Cval<Option<Cval<$ty>>> {
+            fn from(value: Option<&$ty>) -> Self {
+                Self(value.map(Cval::from))
+            }
+        }
+
+        impl From<Cval<$ty>> for Cval<Option<Cval<$ty>>> {
+            fn from(value: Cval<$ty>) -> Self {
+                Self(Some(Cval::from(value)))
+            }
+        }
+
+        impl From<Option<Cval<$ty>>> for Cval<Option<Cval<$ty>>> {
+            fn from(value: Option<Cval<$ty>>) -> Self {
+                Self(value.map(Cval::from))
+            }
+        }
+
+        impl Display for Cval<Option<Cval<$ty>>> {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                if let Some(value) = self.as_ref() {
+                    write!(f, "{value}")
+                } else {
+                    Ok(())
+                }
+            }
+        }
+    };
+    ($ty:ty) => {
+        impl ICval for Option<$ty> {
+            type Repr = Option<Cval<$ty>>;
+        }
+
+        impl Default for Cval<Option<$ty>> {
+            fn default() -> Self {
+                Self(None)
+            }
+        }
+
+        impl Cval<Option<$ty>> {
+            pub fn as_ref(&self) -> Option<&Cval<$ty>> {
+                self.0.as_ref()
+            }
+        }
+
+        impl TryFrom<Bytes> for Cval<Option<$ty>> {
+            type Error = ConfigParseOperationError;
+
+            fn try_from(value: Bytes) -> Result<Self, Self::Error> {
+                Ok(Self(Some(<Cval<$ty>>::try_from(value)?)))
+            }
+        }
+
+        impl From<$ty> for Cval<Option<$ty>> {
             fn from(value: $ty) -> Self {
                 Self(Some(Cval::from(value)))
             }
         }
 
-        impl$(<$lifetime>)? From<Option<$ty>> for Cval<Option<$ty>> {
+        impl From<Option<$ty>> for Cval<Option<$ty>> {
             fn from(value: Option<$ty>) -> Self {
                 Self(value.map(Cval::from))
             }
         }
 
-        impl$(<$lifetime>)? Display for Cval<Option<$ty>> {
+        impl Display for Cval<Option<$ty>> {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 if let Some(value) = self.as_ref() {
                     write!(f, "{value}")
@@ -165,18 +244,26 @@ macro_rules! impl_icval_option {
     };
 }
 
-impl_icval_option!({'a} for &'a str);
-impl_icval_option!({'a} for &'a OsStr);
-impl_icval_option!({'a} for &'a Path);
+impl_icval_option!(Cval<str>);
+impl_icval_option!(Cval<OsStr>);
+impl_icval_option!(Cval<Path>);
 impl_icval_option!(bool);
 impl_icval_option!(char);
 impl_icval_option!(Duration);
 
-macro_rules! impl_icval_integer {
-    ($int:ty) => {
+macro_rules! impl_icval_from_str {
+    ($int:ty $(, $default:expr)?) => {
         impl ICval for $int {
             type Repr = Self;
         }
+
+        $(
+            impl Default for Cval<$int> {
+                fn default() -> Self {
+                    Self($default)
+                }
+            }
+        )?
 
         impl AsRef<$int> for Cval<$int> {
             fn as_ref(&self) -> &$int {
@@ -214,40 +301,40 @@ macro_rules! impl_icval_integer {
     };
 }
 
-impl_icval_integer!(u8);
-impl_icval_integer!(u16);
-impl_icval_integer!(u32);
-impl_icval_integer!(u64);
-impl_icval_integer!(u128);
-impl_icval_integer!(usize);
+impl_icval_from_str!(u8, u8::default());
+impl_icval_from_str!(u16, u16::default());
+impl_icval_from_str!(u32, u32::default());
+impl_icval_from_str!(u64, u64::default());
+impl_icval_from_str!(u128, u128::default());
+impl_icval_from_str!(usize, usize::default());
 
-impl_icval_integer!(i8);
-impl_icval_integer!(i16);
-impl_icval_integer!(i32);
-impl_icval_integer!(i64);
-impl_icval_integer!(i128);
-impl_icval_integer!(isize);
+impl_icval_from_str!(i8, i8::default());
+impl_icval_from_str!(i16, i16::default());
+impl_icval_from_str!(i32, i32::default());
+impl_icval_from_str!(i64, i64::default());
+impl_icval_from_str!(i128, i128::default());
+impl_icval_from_str!(isize, isize::default());
 
-impl_icval_integer!(NonZeroU8);
-impl_icval_integer!(NonZeroU16);
-impl_icval_integer!(NonZeroU32);
-impl_icval_integer!(NonZeroU64);
-impl_icval_integer!(NonZeroU128);
-impl_icval_integer!(NonZeroUsize);
+impl_icval_from_str!(NonZeroU8);
+impl_icval_from_str!(NonZeroU16);
+impl_icval_from_str!(NonZeroU32);
+impl_icval_from_str!(NonZeroU64);
+impl_icval_from_str!(NonZeroU128);
+impl_icval_from_str!(NonZeroUsize);
 
-impl_icval_integer!(NonZeroI8);
-impl_icval_integer!(NonZeroI16);
-impl_icval_integer!(NonZeroI32);
-impl_icval_integer!(NonZeroI64);
-impl_icval_integer!(NonZeroI128);
-impl_icval_integer!(NonZeroIsize);
+impl_icval_from_str!(NonZeroI8);
+impl_icval_from_str!(NonZeroI16);
+impl_icval_from_str!(NonZeroI32);
+impl_icval_from_str!(NonZeroI64);
+impl_icval_from_str!(NonZeroI128);
+impl_icval_from_str!(NonZeroIsize);
 
-impl_icval_integer!(f32);
-impl_icval_integer!(f64);
+impl_icval_from_str!(f32, f32::default());
+impl_icval_from_str!(f64, f64::default());
 
-impl_icval_integer!(IpAddr);
-impl_icval_integer!(Ipv4Addr);
-impl_icval_integer!(Ipv6Addr);
-impl_icval_integer!(SocketAddr);
-impl_icval_integer!(SocketAddrV4);
-impl_icval_integer!(SocketAddrV6);
+impl_icval_from_str!(IpAddr);
+impl_icval_from_str!(Ipv4Addr);
+impl_icval_from_str!(Ipv6Addr);
+impl_icval_from_str!(SocketAddr);
+impl_icval_from_str!(SocketAddrV4);
+impl_icval_from_str!(SocketAddrV6);

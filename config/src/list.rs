@@ -7,7 +7,7 @@ use crate::{
 };
 
 #[derive(Debug)]
-pub struct ConfigList<T: ICval> {
+pub struct ConfigList<T: ?Sized + ICval> {
     header: ConfigHeader<T>,
     default: Vec<Cval<T>>,
     list: Vec<Cval<T>>,
@@ -15,7 +15,7 @@ pub struct ConfigList<T: ICval> {
 
 impl<T> ConfigList<T>
 where
-    T: ICval,
+    T: ?Sized + ICval,
 {
     pub const fn new(key: Key) -> Self {
         Self {
@@ -60,8 +60,8 @@ where
 
 impl<T> ConfigOperation<T> for ConfigList<T>
 where
-    T: ICval,
-    T::Repr: PartialEq,
+    Cval<T>: AsRef<T>,
+    T: ?Sized + ICval + PartialEq,
 {
     fn assign<C: Into<Cval<T>>>(&mut self, value: C) {
         let value = value.into();
@@ -150,7 +150,7 @@ where
 
 impl<T> Clone for ConfigList<T>
 where
-    T: ICval,
+    T: ?Sized + ICval,
 {
     fn clone(&self) -> Self {
         Self {
@@ -163,9 +163,8 @@ where
 
 impl<T> Display for ConfigList<T>
 where
-    T: ICval,
-    Cval<T>: Display,
-    T::Repr: PartialEq,
+    Cval<T>: AsRef<T> + Display,
+    T: ?Sized + ICval + PartialEq,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.display(ConfigFmt::new()))

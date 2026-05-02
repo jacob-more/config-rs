@@ -8,6 +8,12 @@ impl ICval for char {
     type Repr = Self;
 }
 
+impl Default for Cval<char> {
+    fn default() -> Self {
+        Self(char::default())
+    }
+}
+
 impl AsRef<char> for Cval<char> {
     fn as_ref(&self) -> &char {
         &self.0

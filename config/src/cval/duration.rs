@@ -48,6 +48,12 @@ impl ICval for Duration {
     type Repr = Self;
 }
 
+impl Default for Cval<Duration> {
+    fn default() -> Self {
+        Self(Duration::default())
+    }
+}
+
 impl AsRef<Duration> for Cval<Duration> {
     fn as_ref(&self) -> &Duration {
         &self.0

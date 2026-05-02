@@ -42,7 +42,7 @@ use crate::{
     parse::{AstOperation, ParseError, Parser, RawEntry, RawGroup, RawOperation},
 };
 #[derive(Debug)]
-pub enum Operation<T: ICval> {
+pub enum Operation<T: ?Sized + ICval> {
     Assign(Cval<T>),
     AssignIfUndefined(Cval<T>),
     Add(Cval<T>),
@@ -52,7 +52,7 @@ pub enum Operation<T: ICval> {
 }
 impl<T> Clone for Operation<T>
 where
-    T: ICval,
+    T: ?Sized + ICval,
 {
     fn clone(&self) -> Self {
         match self {
@@ -303,7 +303,7 @@ pub trait ConfigGroup {
 
 pub trait ConfigOperation<T>
 where
-    T: ICval,
+    T: ?Sized + ICval,
 {
     fn assign<C: Into<Cval<T>>>(&mut self, value: C);
     fn assign_if_undefined<C: Into<Cval<T>>>(&mut self, value: C);
@@ -324,7 +324,7 @@ where
 
 pub trait ConfigOperationExt<T, E>: ConfigOperation<T>
 where
-    T: ICval,
+    T: ?Sized + ICval,
     Cval<T>: TryFrom<bytes::Bytes, Error = E>,
     ConfigParseOperationError: From<E>,
 {
@@ -366,7 +366,7 @@ where
 impl<C, T, E> ConfigOperationExt<T, E> for C
 where
     C: ConfigOperation<T>,
-    T: ICval,
+    T: ?Sized + ICval,
     Cval<T>: TryFrom<bytes::Bytes, Error = E>,
     ConfigParseOperationError: From<E>,
 {

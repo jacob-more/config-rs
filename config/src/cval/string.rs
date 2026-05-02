@@ -9,11 +9,17 @@ use bytes::Bytes;
 
 use crate::{ConfigParseOperationError, Cval, ICval};
 
-impl ICval for &str {
+impl ICval for str {
     type Repr = Bytes;
 }
 
-impl Deref for Cval<&str> {
+impl Default for Cval<str> {
+    fn default() -> Self {
+        Self(Bytes::new())
+    }
+}
+
+impl Deref for Cval<str> {
     type Target = str;
 
     fn deref(&self) -> &Self::Target {
@@ -21,20 +27,20 @@ impl Deref for Cval<&str> {
         //
         // > The bytes passed in must be valid UTF-8.
         //
-        // The bytes are validated as utf8 when a Cval<&str> is constructed and
+        // The bytes are validated as utf8 when a Cval<str> is constructed and
         // although Bytes has multiple references, it is immutable so the
         // validity of the utf8 has not changed.
         unsafe { str::from_utf8_unchecked(&self.0) }
     }
 }
 
-impl AsRef<str> for Cval<&str> {
+impl AsRef<str> for Cval<str> {
     fn as_ref(&self) -> &str {
         self.deref()
     }
 }
 
-impl<T> AsRef<T> for Cval<&str>
+impl<T> AsRef<T> for Cval<str>
 where
     for<'a> str: AsRef<T>,
 {
@@ -43,7 +49,7 @@ where
     }
 }
 
-impl TryFrom<&[u8]> for Cval<&str> {
+impl TryFrom<&[u8]> for Cval<str> {
     type Error = ConfigParseOperationError;
 
     fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
@@ -54,7 +60,7 @@ impl TryFrom<&[u8]> for Cval<&str> {
     }
 }
 
-impl TryFrom<Vec<u8>> for Cval<&str> {
+impl TryFrom<Vec<u8>> for Cval<str> {
     type Error = ConfigParseOperationError;
 
     fn try_from(value: Vec<u8>) -> Result<Self, Self::Error> {
@@ -64,7 +70,7 @@ impl TryFrom<Vec<u8>> for Cval<&str> {
     }
 }
 
-impl TryFrom<Bytes> for Cval<&str> {
+impl TryFrom<Bytes> for Cval<str> {
     type Error = ConfigParseOperationError;
 
     fn try_from(value: Bytes) -> Result<Self, Self::Error> {
@@ -75,7 +81,7 @@ impl TryFrom<Bytes> for Cval<&str> {
     }
 }
 
-impl TryFrom<&OsStr> for Cval<&str> {
+impl TryFrom<&OsStr> for Cval<str> {
     type Error = ConfigParseOperationError;
 
     fn try_from(value: &OsStr) -> Result<Self, Self::Error> {
@@ -85,7 +91,7 @@ impl TryFrom<&OsStr> for Cval<&str> {
     }
 }
 
-impl TryFrom<OsString> for Cval<&str> {
+impl TryFrom<OsString> for Cval<str> {
     type Error = ConfigParseOperationError;
 
     fn try_from(value: OsString) -> Result<Self, Self::Error> {
@@ -95,10 +101,10 @@ impl TryFrom<OsString> for Cval<&str> {
     }
 }
 
-impl TryFrom<Cval<&OsStr>> for Cval<&str> {
+impl TryFrom<Cval<OsStr>> for Cval<str> {
     type Error = ConfigParseOperationError;
 
-    fn try_from(value: Cval<&OsStr>) -> Result<Self, Self::Error> {
+    fn try_from(value: Cval<OsStr>) -> Result<Self, Self::Error> {
         // Validates that the underlying bytes are utf8 encoded. Required for
         // later safety guarantees.
         str::from_utf8(value.deref().as_encoded_bytes())?;
@@ -106,7 +112,7 @@ impl TryFrom<Cval<&OsStr>> for Cval<&str> {
     }
 }
 
-impl TryFrom<&Path> for Cval<&str> {
+impl TryFrom<&Path> for Cval<str> {
     type Error = ConfigParseOperationError;
 
     fn try_from(value: &Path) -> Result<Self, Self::Error> {
@@ -116,7 +122,7 @@ impl TryFrom<&Path> for Cval<&str> {
     }
 }
 
-impl TryFrom<PathBuf> for Cval<&str> {
+impl TryFrom<PathBuf> for Cval<str> {
     type Error = ConfigParseOperationError;
 
     fn try_from(value: PathBuf) -> Result<Self, Self::Error> {
@@ -126,17 +132,17 @@ impl TryFrom<PathBuf> for Cval<&str> {
     }
 }
 
-impl TryFrom<Cval<&Path>> for Cval<&str> {
+impl TryFrom<Cval<Path>> for Cval<str> {
     type Error = ConfigParseOperationError;
 
-    fn try_from(value: Cval<&Path>) -> Result<Self, Self::Error> {
-        // try_from(Cval<&OsStr>) validates that the underlying bytes are utf8
+    fn try_from(value: Cval<Path>) -> Result<Self, Self::Error> {
+        // try_from(Cval<OsStr>) validates that the underlying bytes are utf8
         // encoded. Required for later safety guarantees.
-        Self::try_from(<Cval<&OsStr>>::from(value))
+        Self::try_from(<Cval<OsStr>>::from(value))
     }
 }
 
-impl From<&str> for Cval<&str> {
+impl From<&str> for Cval<str> {
     fn from(value: &str) -> Self {
         // The input is already valid utf8. Safety guarantees for later
         // unchecked cast back into &str are fulfilled.
@@ -144,7 +150,7 @@ impl From<&str> for Cval<&str> {
     }
 }
 
-impl From<String> for Cval<&str> {
+impl From<String> for Cval<str> {
     fn from(value: String) -> Self {
         // The input is already valid utf8. Safety guarantees for later
         // unchecked cast into &str are fulfilled.
@@ -152,7 +158,7 @@ impl From<String> for Cval<&str> {
     }
 }
 
-impl Display for Cval<&str> {
+impl Display for Cval<str> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.deref())
     }
