@@ -50,12 +50,18 @@ pub struct ParseError(ast::AstParseError);
 #[derive(Debug)]
 pub enum RawEntry {
     Group { key: Bytes, body: RawGroup },
-    Operation { key: Bytes, body: RawOperation },
+    Collection { key: Bytes, body: RawOperation },
 }
 #[derive(Debug)]
 pub struct RawGroup(pub(crate) Vec<AstEntry>);
 #[derive(Debug)]
 pub struct RawOperation(pub(crate) AstOperation);
+
+impl RawGroup {
+    pub fn into_raw_entries(self) -> impl Iterator<Item = RawEntry> {
+        self.0.into_iter().map(RawEntry::new)
+    }
+}
 
 impl Parser {
     pub fn new() -> Self {
@@ -107,7 +113,7 @@ impl RawEntry {
                 key,
                 body: RawGroup(group),
             },
-            AstEntry::Operation { key, operation } => Self::Operation {
+            AstEntry::Operation { key, operation } => Self::Collection {
                 key,
                 body: RawOperation(operation),
             },
@@ -119,7 +125,7 @@ impl RawEntry {
 
         match self {
             Self::Group { key, body: _ } => OsStr::from_bytes(key).display(),
-            Self::Operation { key, body: _ } => OsStr::from_bytes(key).display(),
+            Self::Collection { key, body: _ } => OsStr::from_bytes(key).display(),
         }
     }
 }

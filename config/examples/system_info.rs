@@ -1,13 +1,9 @@
-use config::{ConfigExt, Cval, collections::ConfigValue};
-use config::{Key, derive};
+use config::{ConfigGroupExt, derive};
+use config::{Cval, collections::ConfigValue};
 
-#[derive(
-    Debug, Clone, derive::Config, derive::ConfigGroup, derive::ConfigDefault, derive::ConfigDisplay,
-)]
+#[derive(Debug, Clone, derive::ConfigGroup, derive::ConfigDefault, derive::ConfigDisplay)]
 #[exhaustive]
 pub struct Locale {
-    #[key("LOCALE")]
-    pub group_key: Key,
     pub lang: ConfigValue<Option<Cval<str>>>,
     pub lc_address: ConfigValue<Option<Cval<str>>>,
     pub lc_identification: ConfigValue<Option<Cval<str>>>,
@@ -20,12 +16,8 @@ pub struct Locale {
     pub lc_time: ConfigValue<Option<Cval<str>>>,
 }
 
-#[derive(
-    Debug, Clone, derive::Config, derive::ConfigGroup, derive::ConfigDefault, derive::ConfigDisplay,
-)]
+#[derive(Debug, Clone, derive::ConfigGroup, derive::ConfigDefault, derive::ConfigDisplay)]
 pub struct OsRelease {
-    #[key("OS_RELEASE")]
-    pub group_key: Key,
     pub name: ConfigValue<Option<Cval<str>>>,
     pub id: ConfigValue<Option<Cval<str>>>,
     pub id_like: ConfigValue<Option<Cval<str>>>,
@@ -38,9 +30,7 @@ pub struct OsRelease {
     pub privacy_policy_url: ConfigValue<Option<Cval<str>>>,
 }
 
-#[derive(
-    Debug, Clone, derive::Config, derive::ConfigGroup, derive::ConfigDefault, derive::ConfigDisplay,
-)]
+#[derive(Debug, Clone, derive::ConfigGroup, derive::ConfigDefault, derive::ConfigDisplay)]
 pub struct SystemInfo {
     pub os_release: OsRelease,
     pub locale: Locale,

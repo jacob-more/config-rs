@@ -8,27 +8,7 @@ use crate::field::{ConfigField, FieldType};
 
 pub(crate) mod field;
 
-#[proc_macro_derive(
-    Config,
-    attributes(key, group_key, default, lazy_lock, exhaustive, parse)
-)]
-pub fn config(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    let ast = syn::parse_macro_input!(input as DeriveInput);
-    derive_config(ast).into()
-}
-
-fn derive_config(ast: DeriveInput) -> proc_macro2::TokenStream {
-    // TODO: generics
-    match ConfigStruct::parse(&ast) {
-        Ok(config) => config.generate_impl_parse(),
-        Err(error) => error.to_compile_error(),
-    }
-}
-
-#[proc_macro_derive(
-    ConfigGroup,
-    attributes(key, group_key, default, lazy_lock, exhaustive, parse)
-)]
+#[proc_macro_derive(ConfigGroup, attributes(key, default, lazy_lock, exhaustive, parse))]
 pub fn config_group(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let ast = syn::parse_macro_input!(input as DeriveInput);
     derive_config_group(ast).into()
@@ -42,10 +22,7 @@ fn derive_config_group(ast: DeriveInput) -> proc_macro2::TokenStream {
     }
 }
 
-#[proc_macro_derive(
-    ConfigDefault,
-    attributes(key, group_key, default, lazy_lock, exhaustive, parse)
-)]
+#[proc_macro_derive(ConfigDefault, attributes(key, default, lazy_lock, exhaustive, parse))]
 pub fn config_default(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let ast = syn::parse_macro_input!(input as DeriveInput);
     derive_config_default(ast).into()
@@ -59,10 +36,7 @@ fn derive_config_default(ast: DeriveInput) -> proc_macro2::TokenStream {
     }
 }
 
-#[proc_macro_derive(
-    ConfigDisplay,
-    attributes(key, group_key, default, lazy_lock, exhaustive, parse)
-)]
+#[proc_macro_derive(ConfigDisplay, attributes(key, default, lazy_lock, exhaustive, parse))]
 pub fn config_display(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let ast = syn::parse_macro_input!(input as DeriveInput);
     derive_config_display(ast).into()
@@ -96,7 +70,7 @@ impl<'a> ConfigStruct<'a> {
             fields.push(ConfigField::parse(field, index)?);
         }
         // Ensure all keys are unique within namespaces
-        for namespace in [FieldType::GroupKey, FieldType::Collection, FieldType::Group] {
+        for namespace in [FieldType::Collection, FieldType::Group] {
             let mut taken_keys = HashMap::with_capacity(fields.len());
             for field in fields.iter().filter(|f| f.field_type() == namespace) {
                 let key = field.key_str().literal().value();
@@ -120,7 +94,8 @@ impl<'a> ConfigStruct<'a> {
         })
     }
 
-    fn generate_new_body(&self, group_key: Option<TokenStream>) -> TokenStream {
+    fn generate_impl_default(&self) -> TokenStream {
+        let struct_ident = &self.data.ident;
         let ident = self.fields.iter().map(|f| f.ident());
         let default_instantiate_statement = self
             .fields
@@ -128,28 +103,16 @@ impl<'a> ConfigStruct<'a> {
             .filter(|f| matches!(f.field_type(), FieldType::Collection))
             .map(|f| f.default().statement_instantiate());
         let instantiate_field = self.fields.iter().map(|f| match f.field_type() {
-            FieldType::GroupKey => match group_key.clone() {
-                Some(group_key) => group_key,
-                None => {
-                    let byte_literal = f.key_bytes().literal();
-                    quote! {
-                        ::config::Key::from(#byte_literal.as_slice())
-                    }
-                }
-            },
             FieldType::Collection => f.default().expr_copy_from_ident().to_token_stream(),
             FieldType::Group | FieldType::AnyGroup | FieldType::Flatten => {
                 let ty = f.ty();
-                let byte_literal = f.key_bytes().literal();
                 quote! {
-                    <#ty as ::config::ConfigGroup>::new(
-                        ::config::Key::from(#byte_literal.as_slice())
-                    )
+                    <#ty as ::core::default::Default>::default()
                 }
             }
         });
 
-        match &self.data_struct.fields {
+        let body = match &self.data_struct.fields {
             Fields::Named(_) => quote! {
                 #(#default_instantiate_statement)*
                 Self {
@@ -165,12 +128,7 @@ impl<'a> ConfigStruct<'a> {
             Fields::Unit => quote! {
                 Self
             },
-        }
-    }
-
-    fn generate_impl_default(&self) -> TokenStream {
-        let struct_ident = &self.data.ident;
-        let body = self.generate_new_body(None);
+        };
         quote! {
             impl ::core::default::Default for #struct_ident {
                 fn default() -> Self {
@@ -180,7 +138,7 @@ impl<'a> ConfigStruct<'a> {
         }
     }
 
-    fn generate_impl_parse(&self) -> TokenStream {
+    fn generate_impl_parse_group(&self) -> TokenStream {
         let struct_ident = &self.data.ident;
 
         let flat_groups = self
@@ -222,25 +180,22 @@ impl<'a> ConfigStruct<'a> {
             }
         };
 
-        let replay_field = self.fields.iter().filter_map(|f| match f.field_type() {
-            FieldType::GroupKey => None,
+        let replay_field = self.fields.iter().map(|f| match f.field_type() {
             FieldType::Collection => {
                 let ident = f.ident();
-                let tokens = quote! {
+                quote! {
                     ::config::ConfigCollectionExt::replay(&mut self.#ident, &other.#ident);
-                };
-                Some(tokens)
+                }
             }
             FieldType::Group | FieldType::AnyGroup | FieldType::Flatten => {
                 let ident = f.ident();
-                let tokens = quote! {
+                quote! {
                     ::config::ConfigGroup::replay(&mut self.#ident, &other.#ident);
-                };
-                Some(tokens)
+                }
             }
         });
 
-        let display_body = self.generate_impl_display_body(Some(quote! { &fmt }));
+        let display_body = self.generate_impl_display_body(quote! { &fmt });
 
         let ignore_unmatched_keys = match self.attributes.exhaustive {
             true => quote! {},
@@ -248,7 +203,7 @@ impl<'a> ConfigStruct<'a> {
         };
 
         quote! {
-            impl ::config::Config for #struct_ident {
+            impl ::config::ConfigGroup for #struct_ident {
                 type Err = ::config::ConfigParseError;
 
                 #[allow(unreachable_code)]
@@ -257,11 +212,11 @@ impl<'a> ConfigStruct<'a> {
                     entry: ::config::parse::RawEntry
                 ) -> ::std::result::Result<(), Self::Err> {
                     #(
-                        let entry = match ::config::Config::parse_entry(&mut self.#flat_ident, entry) {
+                        let entry = match ::config::ConfigGroup::parse_entry(&mut self.#flat_ident, entry) {
                             ::std::result::Result::Ok(()) => return ::std::result::Result::Ok(()),
                             ::std::result::Result::Err(::config::ConfigParseError::UnknownKey(rejected_entry)) => rejected_entry,
                             ::std::result::Result::Err(::config::ConfigParseError::UnknownGroupKey(rejected_entry)) => rejected_entry,
-                            ::std::result::Result::Err(::config::ConfigParseError::UnknownOperationKey(rejected_entry)) => rejected_entry,
+                            ::std::result::Result::Err(::config::ConfigParseError::UnknownCollectionKey(rejected_entry)) => rejected_entry,
                             ::std::result::Result::Err(error) => return ::std::result::Result::Err(error),
                         };
                     )*
@@ -269,25 +224,27 @@ impl<'a> ConfigStruct<'a> {
                     match entry {
                         ::config::parse::RawEntry::Group { key, body } => match ::std::ops::Deref::deref(&key) {
                             #(#group_key_pattern => if let ::std::result::Result::Err(error) =
-                                ::config::ConfigGroup::parse_group(
+                                ::config::ConfigGroup::parse(
                                     &mut self.#group_ident,
-                                    ::core::convert::From::from(key),
                                     body
                                 )
                             {
                                 return ::std::result::Result::Err(
-                                    ::config::ConfigParseError::Group(error)
+                                    ::config::ConfigParseError::Group(
+                                        ::std::boxed::Box::new(error)
+                                    )
                                 );
                             },)*
                             #(_ => if let ::std::result::Result::Err(error) =
-                                ::config::ConfigGroup::parse_group(
+                                ::config::ConfigGroup::parse_entry(
                                     &mut self.#any_group_ident,
-                                    ::core::convert::From::from(key),
-                                    body
+                                    ::config::parse::RawEntry::Group { key, body }
                                 )
                             {
                                 return ::std::result::Result::Err(
-                                    ::config::ConfigParseError::Group(error)
+                                    ::config::ConfigParseError::Group(
+                                        ::std::boxed::Box::new(error)
+                                    )
                                 );
                             },)*
                             #ignore_unmatched_keys
@@ -307,11 +264,10 @@ impl<'a> ConfigStruct<'a> {
                                 }
                             },
                         },
-                        ::config::parse::RawEntry::Operation { key, body } => match ::std::ops::Deref::deref(&key) {
+                        ::config::parse::RawEntry::Collection { key, body } => match ::std::ops::Deref::deref(&key) {
                             #(#config_key_pattern => if let ::std::result::Result::Err(error) =
                                 ::config::ConfigCollectionExt::parse_entry(
                                     &mut self.#config_ident,
-                                    ::core::convert::From::from(key),
                                     body
                                 )
                             {
@@ -323,14 +279,14 @@ impl<'a> ConfigStruct<'a> {
                             _ => {
                                 if <[&[u8]]>::contains(&#group_key_array, &::std::ops::Deref::deref(&key)) {
                                     return ::std::result::Result::Err(
-                                        ::config::ConfigParseError::UnknownOperationKey(
-                                            ::config::parse::RawEntry::Operation { key, body }
+                                        ::config::ConfigParseError::UnknownCollectionKey(
+                                            ::config::parse::RawEntry::Collection { key, body }
                                         )
                                     );
                                 } else {
                                     return ::std::result::Result::Err(
                                         ::config::ConfigParseError::UnknownKey(
-                                            ::config::parse::RawEntry::Operation { key, body }
+                                            ::config::parse::RawEntry::Collection { key, body }
                                         )
                                     );
                                 }
@@ -353,324 +309,83 @@ impl<'a> ConfigStruct<'a> {
         }
     }
 
-    fn generate_impl_parse_group(&self) -> TokenStream {
-        let struct_ident = &self.data.ident;
-
-        // The function `new()` takes an argument `key` which we want to use
-        // instead of the pre-defined literal.
-        let new_body = self.generate_new_body(Some(quote! { key }));
-
-        let group_keys = self
-            .fields
-            .iter()
-            .filter(|f| matches!(f.field_type(), FieldType::GroupKey));
-        let flat_groups = self
-            .fields
-            .iter()
-            .filter(|f| matches!(f.field_type(), FieldType::Flatten));
-        let groups = self
-            .fields
-            .iter()
-            .filter(|f| matches!(f.field_type(), FieldType::Group));
-        let any_groups = self
-            .fields
-            .iter()
-            .filter(|f| matches!(f.field_type(), FieldType::AnyGroup));
-        let configs = self
-            .fields
-            .iter()
-            .filter(|f| matches!(f.field_type(), FieldType::Collection));
-
-        let group_key = group_keys.map(|f| {
-            let ident = f.ident();
-            quote! {
-                self.#ident = ::std::clone::Clone::clone(&key);
-            }
-        });
-
-        let flat_ident = flat_groups.map(|f| f.ident());
-
-        let group_key_pattern = groups.clone().map(|f| f.key_bytes().literal());
-        let group_ident = groups.clone().map(|f| f.ident());
-        let group_key_array = {
-            let literal = groups.clone().map(|f| f.key_bytes().literal());
-            quote! {
-                [#(#literal,)*]
-            }
-        };
-
-        let any_group_ident = any_groups.map(|f| f.ident());
-
-        let config_key_pattern = configs.clone().map(|f| f.key_bytes().literal());
-        let config_ident = configs.clone().map(|f| f.ident());
-        let config_key_array = {
-            let literal = configs.clone().map(|f| f.key_bytes().literal());
-            quote! {
-                [#(#literal,)*]
-            }
-        };
-
-        let replay_field = self.fields.iter().filter_map(|f| match f.field_type() {
-            FieldType::GroupKey => None,
-            FieldType::Collection => {
-                let ident = f.ident();
-                let tokens = quote! {
-                    ::config::ConfigCollectionExt::replay(&mut self.#ident, &other.#ident);
-                };
-                Some(tokens)
-            }
-            FieldType::Group | FieldType::AnyGroup | FieldType::Flatten => {
-                let ident = f.ident();
-                let tokens = quote! {
-                    ::config::ConfigGroup::replay(&mut self.#ident, &other.#ident);
-                };
-                Some(tokens)
-            }
-        });
-
-        let display_body = self.generate_impl_display_body(Some(quote! { &fmt }));
-
-        let ignore_unmatched_keys = match self.attributes.exhaustive {
-            true => quote! {},
-            false => quote! { _ => (), },
-        };
-
-        quote! {
-            impl ::config::ConfigGroup for #struct_ident {
-                type Err = ::config::ConfigParseGroupError;
-
-                fn new(key: ::config::Key) -> Self {
-                    #new_body
-                }
-
-                #[allow(unreachable_code)]
-                fn parse_entry(
-                    &mut self,
-                    key: &::config::Key,
-                    entry: ::config::parse::RawEntry
-                ) -> ::std::result::Result<(), Self::Err> {
-                    #(#group_key)*
-                    let parent_key = key;
-
-                    #(
-                        let entry = match ::config::ConfigGroup::parse_entry(&mut self.#flat_ident, parent_key, entry) {
-                            ::std::result::Result::Ok(()) => return ::std::result::Result::Ok(()),
-                            ::std::result::Result::Err(::config::ConfigParseGroupError::UnknownKey { entry: rejected_entry, .. }) => rejected_entry,
-                            ::std::result::Result::Err(::config::ConfigParseGroupError::UnknownGroupKey { entry: rejected_entry, .. }) => rejected_entry,
-                            ::std::result::Result::Err(::config::ConfigParseGroupError::UnknownOperationKey { entry: rejected_entry, .. }) => rejected_entry,
-                            ::std::result::Result::Err(error) => return ::std::result::Result::Err(error),
-                        };
-                    )*
-
-                    match entry {
-                        ::config::parse::RawEntry::Group { key, body } => match ::std::ops::Deref::deref(&key) {
-                            #(#group_key_pattern => if let ::std::result::Result::Err(error) =
-                                ::config::ConfigGroup::parse_group(
-                                    &mut self.#group_ident,
-                                    ::core::convert::From::from(key),
-                                    body
-                                )
-                            {
-                                return ::std::result::Result::Err(
-                                    ::config::ConfigParseGroupError::Group {
-                                        group: ::config::derive::Bytes::from(
-                                            ::std::clone::Clone::clone(parent_key)
-                                        ),
-                                        error: ::std::boxed::Box::new(error),
-                                    }
-                                );
-                            },)*
-                            #(_ => if let ::std::result::Result::Err(error) =
-                                ::config::ConfigGroup::parse_group(
-                                    &mut self.#any_group_ident,
-                                    ::core::convert::From::from(key),
-                                    body
-                                )
-                            {
-                                return ::std::result::Result::Err(
-                                    ::config::ConfigParseGroupError::Group {
-                                        group: ::config::derive::Bytes::from(
-                                            ::std::clone::Clone::clone(parent_key)
-                                        ),
-                                        error: ::std::boxed::Box::new(error),
-                                    }
-                                );
-                            },)*
-                            #ignore_unmatched_keys
-                            _ => {
-                                if <[&[u8]]>::contains(&#config_key_array, &::std::ops::Deref::deref(&key)) {
-                                    return ::std::result::Result::Err(
-                                        ::config::ConfigParseGroupError::UnknownGroupKey {
-                                            group: ::config::derive::Bytes::from(
-                                                ::std::clone::Clone::clone(parent_key)
-                                            ),
-                                            entry: ::config::parse::RawEntry::Group { key, body },
-                                        }
-                                    );
-                                } else {
-                                    return ::std::result::Result::Err(
-                                        ::config::ConfigParseGroupError::UnknownKey {
-                                            group: ::config::derive::Bytes::from(
-                                                ::std::clone::Clone::clone(parent_key)
-                                            ),
-                                            entry: ::config::parse::RawEntry::Group { key, body },
-                                        }
-                                    );
-                                }
-                            },
-                        },
-                        ::config::parse::RawEntry::Operation { key, body } => match ::std::ops::Deref::deref(&key) {
-                            #(#config_key_pattern => if let ::std::result::Result::Err(error) =
-                                ::config::ConfigCollectionExt::parse_entry(
-                                    &mut self.#config_ident,
-                                    ::core::convert::From::from(key),
-                                    body
-                                )
-                            {
-                                return ::std::result::Result::Err(
-                                    ::config::ConfigParseGroupError::Entry {
-                                        group: ::config::derive::Bytes::from(
-                                            ::std::clone::Clone::clone(parent_key)
-                                        ),
-                                        error,
-                                    }
-                                );
-                            },)*
-                            #ignore_unmatched_keys
-                            _ => {
-                                if <[&[u8]]>::contains(&#group_key_array, &::std::ops::Deref::deref(&key)) {
-                                    return ::std::result::Result::Err(
-                                        ::config::ConfigParseGroupError::UnknownOperationKey {
-                                            group: ::config::derive::Bytes::from(
-                                                ::std::clone::Clone::clone(parent_key)
-                                            ),
-                                            entry: ::config::parse::RawEntry::Operation { key, body },
-                                        }
-                                    );
-                                } else {
-                                    return ::std::result::Result::Err(
-                                        ::config::ConfigParseGroupError::UnknownKey {
-                                            group: ::config::derive::Bytes::from(
-                                                ::std::clone::Clone::clone(parent_key)
-                                            ),
-                                            entry: ::config::parse::RawEntry::Operation { key, body },
-                                        }
-                                    );
-                                }
-                            },
-                        },
-                    }
-                    ::std::result::Result::Ok(())
-                }
-
-                fn replay(&mut self, other: &Self) {
-                    #(#replay_field)*
-                }
-
-                fn display(&self, fmt: ::config::ConfigFmt) -> impl ::std::fmt::Display {
-                    ::std::fmt::from_fn(move |f| {
-                        #display_body
-                    })
-                }
-            }
-        }
-    }
-
-    fn generate_impl_display_body(&self, fmt: Option<TokenStream>) -> TokenStream {
-        let group_key = self
-            .fields
-            .iter()
-            .find(|f| matches!(f.field_type(), FieldType::GroupKey))
-            .map(|f| {
-                let key_ident = f.ident();
-                quote! {
-                    &self.#key_ident
-                }
-            });
+    fn generate_impl_display_body(&self, ref_config_fmt: TokenStream) -> TokenStream {
         let fields = self
             .fields
             .iter()
-            .filter_map(|f| {
+            .map(|f| {
                 let ident = f.ident();
+                let key = f.key_bytes().literal();
                 match f.field_type() {
-                    FieldType::GroupKey => None,
-                    FieldType::Collection => Some(quote! {
+                    FieldType::Collection => quote! {
                         ::config::ConfigCollection::display(
                             &self.#ident,
-                            ::config::ConfigFmt::next(&fmt),
+                            ::config::ConfigFmt::with_key(
+                                ::config::ConfigFmt::next(fmt),
+                                &::config::Key::from_static(#key),
+                            ),
                         )
-                    }),
-                    FieldType::Group | FieldType::AnyGroup => Some(quote! {
+                    },
+                    FieldType::Group | FieldType::AnyGroup => quote! {
                         ::config::ConfigGroup::display(
                             &self.#ident,
-                            ::config::ConfigFmt::next(&fmt),
+                            ::config::ConfigFmt::with_key(
+                                ::config::ConfigFmt::next(fmt),
+                                &::config::Key::from_static(#key),
+                            ),
                         )
-                    }),
-                    FieldType::Flatten => Some(quote! {
+                    },
+                    FieldType::Flatten => quote! {
                         ::config::ConfigGroup::display(
                             &self.#ident,
                             ::config::ConfigFmt::with_flatten(
-                                ::config::ConfigFmt::next(&fmt),
-                            )
+                                ::config::ConfigFmt::with_key(
+                                    ::config::ConfigFmt::next(fmt),
+                                    &::config::Key::from_static(#key),
+                                )
+                            ),
                         )
-                    }),
+                    },
                 }
             })
             .collect::<Vec<_>>();
 
-        let fmt = fmt.unwrap_or_else(|| {
-            if group_key.is_some() {
+        match fields.split_last() {
+            Some((last_field, fields)) => {
                 quote! {
-                    ::config::ConfigFmt::new()
-                }
-            } else {
-                quote! {
-                    ::config::ConfigFmt::with_flatten(
-                        ::config::ConfigFmt::new()
-                    )
-                }
-            }
-        });
+                    let fmt = #ref_config_fmt;
+                    match fmt.key() {
+                        Some(key) => {
+                            let indent = ::config::ConfigFmt::indent(fmt);
 
-        match (group_key, fields.split_last()) {
-            (Some(group_key), Some((last_field, fields))) => {
-                quote! {
-                    let fmt = #fmt;
-                    let indent = ::config::ConfigFmt::indent(&fmt);
-                    let inner_fmt = ::config::ConfigFmt::next(&fmt);
-
-                    if !::config::ConfigFmt::flatten(&fmt) {
-                        ::core::writeln!(f, "{indent}{}: {{", #group_key)?;
+                            if !::config::ConfigFmt::flatten(fmt) {
+                                ::core::writeln!(f, "{indent}{key}: {{")?;
+                            }
+                            #(::core::writeln!(f, "{}", #fields)?;)*
+                            ::core::write!(f, "{}", #last_field)?;
+                            if !::config::ConfigFmt::flatten(fmt) {
+                                ::core::write!(f, "\n{indent}}}")?;
+                            }
+                            ::std::result::Result::Ok(())
+                        },
+                        None => {
+                            // let fmt = ::config::ConfigFmt::with_flatten(fmt);
+                            #(::core::writeln!(f, "{}", #fields)?;)*
+                            ::core::write!(f, "{}", #last_field)
+                        }
                     }
-                    #(::core::writeln!(f, "{}", #fields)?;)*
-                    ::core::write!(f, "{}", #last_field)?;
-                    if !::config::ConfigFmt::flatten(&fmt) {
-                        ::core::write!(f, "\n{indent}}}")?;
-                    }
-                    ::std::result::Result::Ok(())
                 }
             }
-            (Some(group_key), None) => {
+            None => {
                 quote! {
-                    let fmt = #fmt;
-                    let indent = ::config::ConfigFmt::indent(&fmt);
+                    let fmt = #ref_config_fmt;
+                    if let Some(key) = fmt.key() {
+                        let indent = ::config::ConfigFmt::indent(fmt);
 
-                    if !::config::ConfigFmt::flatten(&fmt) {
-                        ::core::write!(f, "{indent}{}: {{ }}", #group_key)?;
+                        if !::config::ConfigFmt::flatten(fmt) {
+                            ::core::write!(f, "{indent}{key}: {{ }}")?;
+                        }
                     }
-                    ::std::result::Result::Ok(())
-                }
-            }
-            (None, Some((last_field, fields))) => {
-                quote! {
-                    let fmt = #fmt;
-
-                    #(::core::writeln!(f, "{}", #fields)?;)*
-                    ::core::write!(f, "{}", #last_field)
-                }
-            }
-            (None, None) => {
-                quote! {
                     ::std::result::Result::Ok(())
                 }
             }
@@ -679,7 +394,11 @@ impl<'a> ConfigStruct<'a> {
 
     fn generate_impl_display(&self) -> TokenStream {
         let struct_ident = &self.data.ident;
-        let body = self.generate_impl_display_body(None);
+        let body = self.generate_impl_display_body(quote! {
+            &::config::ConfigFmt::with_flatten(
+                ::config::ConfigFmt::new()
+            )
+        });
 
         quote! {
             impl ::std::fmt::Display for #struct_ident {

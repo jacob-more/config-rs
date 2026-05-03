@@ -8,7 +8,6 @@ use syn::{
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum FieldType {
-    GroupKey,
     Collection,
     Group,
     AnyGroup,
@@ -143,12 +142,20 @@ impl WellKnownType {
 
     pub fn parser(&self) -> FieldType {
         match self {
-            Self::Key => FieldType::GroupKey,
             Self::ConfigValue => FieldType::Collection,
             Self::ConfigSet => FieldType::Collection,
             Self::ConfigList => FieldType::Collection,
             Self::ConfigAcl => FieldType::Collection,
             Self::Map => FieldType::AnyGroup,
+            Self::Key => {
+                // Although it is not a group, the `Key` field type is not
+                // allowed. Since the default is to parse fields as a `Group`,
+                // this is consistent with the other behavior. We can't really
+                // panic here since then the user would not have the correct
+                // information on where the error occurred. It is more helpful
+                // to be told that `Key` does not implement `ConfigGroup`.
+                FieldType::Group
+            }
         }
     }
 
@@ -316,11 +323,6 @@ impl ConfigFieldAttributes {
 
         for attribute in &field.attrs {
             if matches!(attribute.style, AttrStyle::Outer)
-                && let Meta::Path(path) = &attribute.meta
-                && path.is_ident("group_key")
-            {
-                parser = Some(FieldType::GroupKey);
-            } else if matches!(attribute.style, AttrStyle::Outer)
                 && let Meta::List(meta_list) = &attribute.meta
                 && meta_list.path.is_ident("key")
             {
@@ -360,7 +362,6 @@ impl ConfigFieldAttributes {
                     ("group", FieldType::Group),
                     ("any_group", FieldType::AnyGroup),
                     ("flatten", FieldType::Flatten),
-                    ("key", FieldType::GroupKey),
                 ];
                 for (name, ft) in FIELD_TYPE_MAP {
                     if parsed == name {

@@ -1,8 +1,6 @@
 use std::{
     convert::Infallible,
-    ffi::OsStr,
     fmt::{Debug, Display},
-    os::unix::ffi::OsStrExt,
 };
 
 use bytes::Bytes;
@@ -29,6 +27,7 @@ pub mod derive {
 }
 
 use crate::parse::{AstOperation, ParseError, Parser, RawEntry, RawGroup, RawOperation};
+
 #[derive(Debug)]
 pub enum Operation<T: ?Sized + ICval> {
     Assign(Cval<T>),
@@ -107,38 +106,13 @@ pub enum ConfigParseError {
     #[error("{} is not a valid group key although it might be a valid operation key", .0.display_key())]
     UnknownGroupKey(RawEntry),
     #[error("{} is not a valid operation key although it might be a valid group key", .0.display_key())]
-    UnknownOperationKey(RawEntry),
+    UnknownCollectionKey(RawEntry),
     #[error(transparent)]
-    Group(#[from] ConfigParseGroupError),
+    Group(#[from] Box<ConfigParseError>),
     #[error(transparent)]
     Entry(#[from] ConfigParseEntryError),
 }
 impl From<Infallible> for ConfigParseError {
-    fn from(value: Infallible) -> Self {
-        match value {}
-    }
-}
-
-#[derive(Debug, Error)]
-pub enum ConfigParseGroupError {
-    #[error("{} is not a valid key for group {}", .entry.display_key(), OsStr::from_bytes(.group).display())]
-    UnknownKey { group: Bytes, entry: RawEntry },
-    #[error("{} is not a valid group key although it might be a valid operation key for group {}", .entry.display_key(), OsStr::from_bytes(.group).display())]
-    UnknownGroupKey { group: Bytes, entry: RawEntry },
-    #[error("{} is not a valid operation key although it might be a valid group key for group {}", .entry.display_key(), OsStr::from_bytes(.group).display())]
-    UnknownOperationKey { group: Bytes, entry: RawEntry },
-    #[error("error in group {}: {error}", OsStr::from_bytes(.group).display())]
-    Group {
-        group: Bytes,
-        error: Box<ConfigParseGroupError>,
-    },
-    #[error("error in group {}: {error}", OsStr::from_bytes(.group).display())]
-    Entry {
-        group: Bytes,
-        error: ConfigParseEntryError,
-    },
-}
-impl From<Infallible> for ConfigParseGroupError {
     fn from(value: Infallible) -> Self {
         match value {}
     }
@@ -197,10 +171,13 @@ impl From<Infallible> for ConfigParseIoError {
     }
 }
 
-pub trait Config {
+pub trait ConfigGroup: Default {
     type Err;
 
-    fn parse(&mut self, entries: impl Iterator<Item = RawEntry>) -> Result<(), Self::Err> {
+    fn parse(&mut self, body: RawGroup) -> Result<(), Self::Err> {
+        self.parse_entries(body.into_raw_entries())
+    }
+    fn parse_entries(&mut self, entries: impl Iterator<Item = RawEntry>) -> Result<(), Self::Err> {
         for entry in entries {
             self.parse_entry(entry)?;
         }
@@ -211,13 +188,13 @@ pub trait Config {
     fn display(&self, fmt: ConfigFmt) -> impl Display;
 }
 
-pub trait ConfigExt<E>: Config<Err = E>
+pub trait ConfigGroupExt<E>: ConfigGroup<Err = E>
 where
     ConfigParseBytesError: From<E>,
     ConfigParseIoError: From<E>,
 {
     fn parse_bytes(&mut self, bytes: Bytes) -> Result<(), ConfigParseBytesError> {
-        self.parse(Parser::new().parse_bytes(bytes)?)?;
+        self.parse_entries(Parser::new().parse_bytes(bytes)?)?;
         Ok(())
     }
 
@@ -225,7 +202,7 @@ where
     where
         R: std::io::Read,
     {
-        self.parse(Parser::new().parse_reader(reader)??)?;
+        self.parse_entries(Parser::new().parse_reader(reader)??)?;
         Ok(())
     }
 
@@ -233,7 +210,7 @@ where
     where
         P: AsRef<std::path::Path>,
     {
-        self.parse(Parser::new().parse_file(path)??)?;
+        self.parse_entries(Parser::new().parse_file(path)??)?;
         Ok(())
     }
 
@@ -266,27 +243,12 @@ where
         Ok(config)
     }
 }
-impl<C, E> ConfigExt<E> for C
+impl<C, E> ConfigGroupExt<E> for C
 where
-    C: Config<Err = E>,
+    C: ConfigGroup<Err = E>,
     ConfigParseBytesError: From<E>,
     ConfigParseIoError: From<E>,
 {
-}
-
-pub trait ConfigGroup {
-    type Err;
-
-    fn new(key: Key) -> Self;
-    fn parse_group(&mut self, key: Key, body: RawGroup) -> Result<(), Self::Err> {
-        for entry in body.0 {
-            self.parse_entry(&key, RawEntry::new(entry))?;
-        }
-        Ok(())
-    }
-    fn parse_entry(&mut self, key: &Key, body: RawEntry) -> Result<(), Self::Err>;
-    fn replay(&mut self, other: &Self);
-    fn display(&self, fmt: ConfigFmt) -> impl Display;
 }
 
 pub trait ConfigCollection<T>
@@ -316,9 +278,7 @@ where
     Cval<T>: TryFrom<bytes::Bytes, Error = E>,
     ConfigParseEntryError: From<E>,
 {
-    fn parse_entry(&mut self, key: Key, body: RawOperation) -> Result<(), ConfigParseEntryError> {
-        let _ = key; // key is unused here, but required for the trait.
-
+    fn parse_entry(&mut self, body: RawOperation) -> Result<(), ConfigParseEntryError> {
         match body.0 {
             AstOperation::Assign(value) => self.assign(Cval::try_from(value)?),
             AstOperation::AssignIfUndefined(value) => {
