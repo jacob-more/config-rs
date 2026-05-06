@@ -60,8 +60,8 @@ where
 
 impl<T> ConfigCollection<T> for ConfigList<T>
 where
-    Cval<T>: AsRef<T>,
-    T: ?Sized + ICval + PartialEq,
+    Cval<T>: PartialEq,
+    T: ?Sized + ICval,
 {
     fn assign<C: Into<Cval<T>>>(&mut self, value: C) {
         let value = value.into();
@@ -163,8 +163,8 @@ where
 
 impl<T> Display for ConfigList<T>
 where
-    Cval<T>: AsRef<T> + Display,
-    T: ?Sized + ICval + PartialEq,
+    Cval<T>: PartialEq + Display,
+    T: ?Sized + ICval,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.display(ConfigFmt::new()))

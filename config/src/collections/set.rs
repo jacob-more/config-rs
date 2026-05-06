@@ -15,8 +15,8 @@ pub struct ConfigSet<T: ?Sized + ICval> {
 
 impl<T> ConfigSet<T>
 where
-    Cval<T>: AsRef<T>,
-    T: ?Sized + ICval + Hash + Eq,
+    Cval<T>: Hash + Eq,
+    T: ?Sized + ICval,
 {
     pub fn new(key: Key) -> Self {
         Self {
@@ -57,8 +57,8 @@ where
 
 impl<T> ConfigCollection<T> for ConfigSet<T>
 where
-    Cval<T>: AsRef<T>,
-    T: ?Sized + ICval + Hash + Eq,
+    Cval<T>: Hash + Eq,
+    T: ?Sized + ICval,
 {
     fn assign<C: Into<Cval<T>>>(&mut self, value: C) {
         let value = value.into();
@@ -156,8 +156,8 @@ where
 
 impl<T> Display for ConfigSet<T>
 where
-    Cval<T>: AsRef<T> + Display,
-    T: ?Sized + ICval + Hash + Eq,
+    Cval<T>: Hash + Eq + Display,
+    T: ?Sized + ICval,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.display(ConfigFmt::new()))
