@@ -35,35 +35,36 @@ impl Parse for LexEnum {
 
 impl LexEnum {
     pub fn tokenizer_regex(&self) -> TokenStream {
-        let mut patterns = self
+        let patterns = self
             .variants
             .iter()
             .filter(|var| matches!(var.patterns, LexPatterns::Patterns(_)))
             .map(|var| var.patterns.regex_pattern());
-        let first_pattern = patterns
-            .next()
-            .map(|pat| {
-                quote! {
-                    ::std::write!(f, "({})", #pat)?;
-                }
-            })
-            .expect("length is at least 1");
-        let tail_patterns = patterns.map(|pat| {
-            quote! {
-                ::std::write!(f, "|({})", #pat)?;
-            }
-        });
-        let pattern = quote! {
-            ::std::fmt::from_fn(|f| {
-                #first_pattern
-                #(#tail_patterns)*
-                ::std::result::Result::Ok(())
-            })
-        };
         quote! {
-            ::regex::bytes::Regex::new(
-                &::std::string::ToString::to_string(&#pattern)
-            ).expect("tokenizer regex must be valid")
+            {
+                let mut builder = ::regex_automata::meta::Builder::new();
+                ::regex_automata::meta::Builder::syntax(
+                    &mut builder,
+                    ::regex_automata::util::syntax::Config::utf8(
+                        ::regex_automata::util::syntax::Config::new(),
+                        false,
+                    )
+                );
+                ::regex_automata::meta::Builder::configure(
+                    &mut builder,
+                    ::regex_automata::meta::Config::utf8_empty(
+                        ::regex_automata::meta::Config::match_kind(
+                            ::regex_automata::meta::Config::new(),
+                            ::regex_automata::MatchKind::LeftmostFirst,
+                        ),
+                        false,
+                    ),
+                );
+                ::regex_automata::meta::Builder::build_many(
+                    &builder,
+                    &[#(#patterns),*],
+                ).expect("tokenizer regex must be valid")
+            }
         }
     }
 
@@ -118,7 +119,18 @@ impl LexPatterns {
             Self::Any => quote! {},
             Self::Patterns(patterns) => {
                 if patterns.len() == 1 {
-                    patterns.first().unwrap().regex_pattern()
+                    let pattern = patterns.first().unwrap();
+                    match pattern {
+                        LexExpr::Captures(..) => {
+                            let pattern = pattern.regex_pattern();
+                            quote! {
+                                &::std::string::ToString::to_string(
+                                    &#pattern
+                                )
+                            }
+                        }
+                        LexExpr::Matches(_) | LexExpr::Constant(_) => pattern.regex_pattern(),
+                    }
                 } else {
                     let mut patterns = patterns.iter().map(LexExpr::regex_pattern);
                     let first_pattern = patterns
@@ -135,11 +147,13 @@ impl LexPatterns {
                         }
                     });
                     quote! {
-                        ::std::fmt::from_fn(|f| {
-                            #first_pattern
-                            #(#tail_patterns)*
-                            ::std::result::Result::Ok(())
-                        })
+                        &::std::string::ToString::to_string(
+                            &::std::fmt::from_fn(|f| {
+                                #first_pattern
+                                #(#tail_patterns)*
+                                ::std::result::Result::Ok(())
+                            })
+                        )
                     }
                 }
             }
@@ -226,7 +240,7 @@ impl LexExpr {
                 quote! { #lit_str }
             }
             Self::Constant(ident) => {
-                quote! { ::regex::escape(#ident) }
+                quote! { escape(#ident) }
             }
         }
     }

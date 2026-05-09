@@ -260,7 +260,7 @@ fn generate_tokenizer(lex: &LexEnum) -> proc_macro2::TokenStream {
     quote! {
         #[derive(Debug, Clone)]
         #vis struct Tokenizer {
-            pattern: ::regex::bytes::Regex
+            pattern: ::regex_automata::meta::Regex
         }
 
         impl Tokenizer {
@@ -271,7 +271,7 @@ fn generate_tokenizer(lex: &LexEnum) -> proc_macro2::TokenStream {
 
         impl ::core::default::Default for Tokenizer {
             fn default() -> Self {
-                static PATTERN: std::sync::LazyLock<::regex::bytes::Regex> =
+                static PATTERN: std::sync::LazyLock<::regex_automata::meta::Regex> =
                     std::sync::LazyLock::new(|| {
                         #tokenizer_regex
                     });
@@ -321,47 +321,59 @@ fn generate_token_iter(lex: &LexEnum) -> proc_macro2::TokenStream {
     let case_ident_catchall = &variant_catchall.ident;
     let token_ident_catchall = variant_catchall.token_ident(ident);
 
-    let mut index: usize = 1;
+    let primary_capture_count = lex
+        .variants
+        .iter()
+        .filter(|var| !matches!(var.patterns, LexPatterns::Any))
+        .count();
+    let secondary_capture_count = lex
+        .variants
+        .iter()
+        .filter(|var| !matches!(var.patterns, LexPatterns::Any))
+        .map(|var| var.patterns.extra_capture_count())
+        .sum::<usize>();
+    let mut secondary_capture_index = 2 * primary_capture_count;
     let capture_variants = lex
         .variants
         .iter()
         .filter(|var| !matches!(var.patterns, LexPatterns::Any))
-        .map(|var| {
+        .enumerate()
+        .map(|(pattern_id, var)| (u32::try_from(pattern_id).unwrap(), var))
+        .map(|(pattern_id, var)| {
             let case_ident = &var.ident;
             let token_ident = var.token_ident(ident);
 
-            let tokens = if var.patterns.is_capturing() {
-                let captures = (1..=var.patterns.extra_capture_count()).map(|offset| {
-                    let index = offset + index;
+            if var.patterns.is_capturing() {
+                let captures = (0..var.patterns.extra_capture_count()).map(|_| {
+                    let start_index = secondary_capture_index;
+                    let end_index = start_index + 1;
+                    secondary_capture_index += 2;
                     quote! {
-                        self.capture_locs
-                            .get(#index)
-                            .map(|(start, end)| (offset + start, offset + end)),
+                        captures[#start_index].and_then(|start| {
+                            Some((
+                                start.get() + offset,
+                                captures[#end_index]?.get() + offset
+                            ))
+                        }),
                     }
                 });
                 quote! {
-                    if self.capture_locs.get(#index).is_some() {
-                        return Some(#ident::#case_ident(#token_ident {
-                            buffer: self.buffer,
-                            start: offset + matched.start(),
-                            end: offset + matched.end(),
-                            captures: [ #(#captures)* ],
-                        }))
-                    }
+                    #pattern_id => Some(#ident::#case_ident(#token_ident {
+                        buffer: self.buffer,
+                        start: offset + match_start,
+                        end: offset + match_end,
+                        captures: [ #(#captures)* ],
+                    })),
                 }
             } else {
                 quote! {
-                    if self.capture_locs.get(#index).is_some() {
-                        return Some(#ident::#case_ident(#token_ident {
-                            buffer: self.buffer,
-                            start: offset + matched.start(),
-                            end: offset + matched.end(),
-                        }))
-                    }
+                    #pattern_id => Some(#ident::#case_ident(#token_ident {
+                        buffer: self.buffer,
+                        start: offset + match_start,
+                        end: offset + match_end,
+                    })),
                 }
-            };
-            index += 1 + var.patterns.extra_capture_count();
-            tokens
+            }
         })
         .collect::<Vec<_>>();
 
@@ -371,7 +383,6 @@ fn generate_token_iter(lex: &LexEnum) -> proc_macro2::TokenStream {
             buffer: &'h ::bytes::Bytes,
             tokenizer: &'r Tokenizer,
             last_end: usize,
-            capture_locs: ::regex::bytes::CaptureLocations,
         }
 
         impl<'r, 'h> #iter_ident<'r, 'h> {
@@ -380,7 +391,6 @@ fn generate_token_iter(lex: &LexEnum) -> proc_macro2::TokenStream {
                     buffer,
                     tokenizer,
                     last_end: 0,
-                    capture_locs: tokenizer.pattern.capture_locations(),
                 }
             }
         }
@@ -389,13 +399,14 @@ fn generate_token_iter(lex: &LexEnum) -> proc_macro2::TokenStream {
             type Item = #ident<'h>;
 
             fn next(&mut self) -> Option<Self::Item> {
-                let Some(matched) = self
+                let mut captures = [None; 2 * (#primary_capture_count + #secondary_capture_count)];
+                let Some(matched_pattern) = self
                     .tokenizer
                     .pattern
-                    .captures_read(&mut self.capture_locs, &self.buffer[self.last_end..])
+                    .search_slots(&self.buffer[self.last_end..].into(), &mut captures)
                 else {
                     if self.last_end < self.buffer.len() {
-                        std::hint::cold_path();
+                        ::std::hint::cold_path();
                         let result = #ident::#case_ident_catchall(
                             #token_ident_catchall {
                                 buffer: self.buffer,
@@ -409,24 +420,37 @@ fn generate_token_iter(lex: &LexEnum) -> proc_macro2::TokenStream {
                     return None;
                 };
 
+                let start_index = matched_pattern.as_usize() * 2;
+                let end_index = start_index + 1;
+                let match_start = captures[start_index]
+                    .expect("first capture must be present with matching pattern id")
+                    .get();
+                let match_end = captures[end_index]
+                    .expect("first capture must be present with matching pattern id")
+                    .get();
                 let offset = self.last_end;
-                if self.last_end < offset + matched.start() {
-                    std::hint::cold_path();
+
+                if self.last_end < (offset + match_start) {
+                    ::std::hint::cold_path();
                     let result = #ident::#case_ident_catchall(
                         #token_ident_catchall {
                             buffer: self.buffer,
                             start: self.last_end,
-                            end: offset + matched.start(),
+                            end: offset + match_start,
                         }
                     );
-                    self.last_end += matched.start();
+                    self.last_end += match_start;
                     return Some(result);
                 }
 
-                self.last_end += matched.end();
-                #(#capture_variants)*
-
-                panic!("must match at least one capture group");
+                self.last_end += match_end;
+                match matched_pattern.as_u32() {
+                    #(#capture_variants)*
+                    _ => {
+                        ::std::hint::cold_path();
+                        panic!("must match at least one capture group");
+                    }
+                }
             }
         }
     }

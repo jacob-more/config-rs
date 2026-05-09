@@ -72,6 +72,19 @@ fn get_pos(bytes: &[u8]) -> Pos {
     }
 }
 
+fn escape(text: &str) -> impl Display {
+    std::fmt::from_fn(|f| {
+        for c in text.chars() {
+            if regex_syntax::is_meta_character(c) {
+                write!(f, "\\{c}")?;
+            } else {
+                write!(f, "{c}")?;
+            }
+        }
+        Ok(())
+    })
+}
+
 lex! {
     pub enum Token {
         Whitespace = r"(?-u:\s|\r|\n)+",

@@ -20,6 +20,8 @@ config_derive = { path = "../config-derive" }
 lex_token_derive = { path = "../lex-token-derive" }
 display_as_debug_derive = { path = "../display-as-debug-derive" }
 regex = "1.12"
+regex-automata = "0.4"
+regex-syntax = "0.8"
 thiserror = "2.0"
 
 [dev-dependencies]
