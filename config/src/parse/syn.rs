@@ -9,6 +9,9 @@ use crate::parse::{
     lex::{Span, Token, TokenBinaryOp, TokenSuffixUnaryOp, TokenValue, Tokenizer},
 };
 
+#[cfg(test)]
+mod test;
+
 #[derive(DisplayAsDebug, Error)]
 enum ReprSyntaxError {
     #[error(
@@ -97,6 +100,12 @@ pub(crate) enum SyntaxTreeEntry<'a> {
 impl SyntaxParser {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    pub fn compile() -> Self {
+        Self {
+            tokenizer: Tokenizer::compile(),
+        }
     }
 }
 

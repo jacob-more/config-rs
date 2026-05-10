@@ -190,6 +190,12 @@ impl AstParser {
         }
     }
 
+    pub fn compile() -> Self {
+        Self {
+            syntax_parser: SyntaxParser::compile(),
+        }
+    }
+
     pub fn parse<B>(&self, bytes: B) -> Result<Ast, AstParseError>
     where
         Bytes: From<B>,

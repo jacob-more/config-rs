@@ -7,9 +7,12 @@ use crate::parse::lex::{
 
 #[test]
 fn tokenizer_compiles() {
+    let _ = Tokenizer::compile();
     // Will panic if tokenizer does not compile. If other tests were run first,
-    // a lock may be poisoned, which will also result in a panic.
-    let _tokenizer = Tokenizer::new();
+    // a lock may be poisoned, which will also result in a panic. The call to
+    // `compile()` should test the exact same thing, but this just double-checks
+    // that there is not some unexpected issue with one and not the other.
+    let _ = Tokenizer::new();
 }
 
 #[rstest]
