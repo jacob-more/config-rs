@@ -267,17 +267,19 @@ fn generate_tokenizer(lex: &LexEnum) -> proc_macro2::TokenStream {
             pub fn new() -> Self {
                 Self::default()
             }
+
+            pub fn compile() -> Self {
+                Self {
+                    pattern: #tokenizer_regex
+                }
+            }
         }
 
         impl ::core::default::Default for Tokenizer {
             fn default() -> Self {
-                static PATTERN: std::sync::LazyLock<::regex_automata::meta::Regex> =
-                    std::sync::LazyLock::new(|| {
-                        #tokenizer_regex
-                    });
-                Self {
-                    pattern: ::std::clone::Clone::clone(&*PATTERN)
-                }
+                static DEFAULT: std::sync::LazyLock<Tokenizer> =
+                    std::sync::LazyLock::new(Tokenizer::compile);
+                ::std::clone::Clone::clone(&*DEFAULT)
             }
         }
 

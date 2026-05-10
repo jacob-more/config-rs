@@ -88,8 +88,15 @@ fn bench_parse_to_ast(c: &mut Criterion) {
     }
 }
 
+fn bench_compile_lex_tokenizer(c: &mut Criterion) {
+    c.bench_function("CompileLexTokenizer", |bencher| {
+        bencher.iter(|| drop(black_box(Tokenizer::compile())));
+    });
+}
+
 criterion_group!(
     benches,
+    bench_compile_lex_tokenizer,
     bench_parse_to_lex,
     bench_parse_to_syn,
     bench_parse_to_ast,
