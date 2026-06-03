@@ -1,3 +1,5 @@
+use std::assert_matches;
+
 use rstest::rstest;
 
 use crate::parse::lex::{
@@ -116,10 +118,7 @@ fn tokenize_value(#[case] value: &'static str) {
     let tokenizer = Tokenizer::new();
     let mut token_iter = tokenizer.tokenize(&buffer);
     let first_token = token_iter.next();
-    assert!(matches!(
-        &first_token,
-        Some(Token::Value(TokenValue { .. }))
-    ));
+    assert_matches!(&first_token, Some(Token::Value(TokenValue { .. })));
     assert_eq!(first_token.unwrap().as_slice(), value.as_bytes());
     assert_eq!(token_iter.next(), None);
 }

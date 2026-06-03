@@ -210,7 +210,7 @@ impl Display for Cval<Duration> {
 
 #[cfg(test)]
 mod test {
-    use std::time::Duration;
+    use std::{assert_matches, time::Duration};
 
     use bytes::Bytes;
     use rstest::rstest;
@@ -275,10 +275,10 @@ mod test {
         let bytes = Bytes::from_static(duration_string.as_bytes());
         let parse_result = <Cval<Duration>>::try_from(bytes);
         assert!(parse_result.is_err());
-        assert!(matches!(
+        assert_matches!(
             *parse_result.unwrap_err().0,
             ReprParseConfigEntryError::ParseDuration(ParseDurationError::Format)
-        ));
+        );
     }
 
     #[rstest]
@@ -294,10 +294,10 @@ mod test {
         let bytes = Bytes::from_static(duration_string.as_bytes());
         let parse_result = <Cval<Duration>>::try_from(bytes);
         assert!(parse_result.is_err());
-        assert!(matches!(
+        assert_matches!(
             *parse_result.unwrap_err().0,
             ReprParseConfigEntryError::ParseDuration(ParseDurationError::ParseFieldInt(..))
-        ));
+        );
     }
 
     #[rstest]
@@ -313,10 +313,10 @@ mod test {
         let bytes = Bytes::from_static(duration_string.as_bytes());
         let parse_result = <Cval<Duration>>::try_from(bytes);
         assert!(parse_result.is_err());
-        assert!(matches!(
+        assert_matches!(
             *parse_result.unwrap_err().0,
             ReprParseConfigEntryError::ParseDuration(ParseDurationError::FieldOverflows(..))
-        ));
+        );
     }
 }
 
