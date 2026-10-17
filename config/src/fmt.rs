@@ -22,8 +22,8 @@ impl<'a> ConfigFmt<'a> {
         self.key = Some(key);
         self
     }
-    pub fn with_indent_increments(mut self, indent: Indent) -> Self {
-        self.indent = indent;
+    pub fn with_indent_increments(mut self, increment_indent_by: Indent) -> Self {
+        self.increment_indent_by = increment_indent_by;
         self
     }
 
