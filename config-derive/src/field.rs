@@ -119,7 +119,10 @@ impl WellKnownType {
             ("HashMap", WellKnownType::Map),
             ("BTreeMap", WellKnownType::Map),
         ];
-        let Type::Path(TypePath { qself: None, path }) = &ty else {
+        let Type::Path(TypePath {
+            qself: None, path, ..
+        }) = &ty
+        else {
             return None;
         };
         let last_segment = path.segments.last()?;

@@ -169,7 +169,7 @@ impl TryFrom<Bytes> for Cval<Duration> {
             || ((seconds == Duration::MAX.as_secs())
                 && (subsec_nanos > Duration::MAX.subsec_nanos()))
         {
-            return Err(ParseDurationError::FieldOverflows(value))?;
+            Err(ParseDurationError::FieldOverflows(value))?;
         }
         Ok(Self(Duration::new(seconds, subsec_nanos)))
     }
