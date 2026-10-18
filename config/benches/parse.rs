@@ -4,6 +4,7 @@ use std::{
     io::Read,
     path::PathBuf,
     sync::LazyLock,
+    time::Duration,
 };
 
 use bytes::Bytes;
@@ -125,10 +126,14 @@ fn bench_compile_lex_tokenizer(c: &mut Criterion) {
 }
 
 criterion_group!(
-    benches,
-    bench_compile_lex_tokenizer,
-    bench_parse_to_lex,
-    bench_parse_to_syn,
-    bench_parse_to_ast,
+    name = benches;
+    config = Criterion::default()
+        .significance_level(0.01)
+        .measurement_time(Duration::from_secs(10));
+    targets =
+        bench_compile_lex_tokenizer,
+        bench_parse_to_lex,
+        bench_parse_to_syn,
+        bench_parse_to_ast,
 );
 criterion_main!(benches);
